@@ -1,0 +1,30 @@
+:root {
+  color-scheme: dark;
+
+  --bg: #0d0d0f;
+  --surface: #17171a;
+  --surface-raised: #1f1f24;
+  --border: #2a2a30;
+
+  --text: #e8e8ea;
+  --text-muted: #8a8a92;
+  --accent: #4f9cf9;
+  --danger: #e5534b;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius: 8px;
+  --tap: 44px;
+}
