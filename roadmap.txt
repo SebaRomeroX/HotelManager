@@ -1,0 +1,138 @@
+================================================================
+HOTEL MANAGER — ROADMAP
+================================================================
+Last updated: 2026-10-31
+Status: specification phase
+
+Structure of this file:
+  1. GUIDANCE               fixed rules, never violated
+  2. PROJECT SPECIFICATION   what we are building
+  3. DEV LOG                 dated record of work and reasoning
+  4. TODO TASKS              open work items
+  5. FUTURE FEATURES         deliberately out of scope
+
+
+================================================================
+1. GUIDANCE
+================================================================
+
+Non-negotiable constraints. Every later decision must respect these.
+
+1.1 Minimalistic UI
+- Plain, quiet, functional. Whitespace over decoration.
+- No gradients, no shadows, no icon fonts, no animation beyond what
+  immediate feedback requires.
+- One accent colour. Hierarchy through spacing and type weight, not colour.
+
+1.2 Mobile first
+- Designed at 360px wide first; larger screens are progressive enhancement
+  via min-width media queries only.
+- Tap targets >= 44px, primary actions in the thumb zone.
+- No hover-only affordances, no fixed-width layouts, no horizontal scroll.
+
+1.3 Dark theme only, for now
+- Single hard-coded dark palette. No light mode, no toggle, no
+  prefers-color-scheme branching. Colours live in CSS custom properties
+  so a second theme is a token swap later, not a rewrite.
+
+1.4 Minimum dependencies
+- Target: 0 runtime dependencies.
+- Vanilla HTML + CSS + JavaScript. No framework, no bundler, no CSS
+  framework, no runtime CDN, no icon library, no date library.
+- Dev-time tooling only if genuinely unavoidable, and never required to
+  run the app.
+
+1.5 Front-end only, for now
+- No server, no API, no auth, no database, no network calls at runtime.
+- Everything executes in the browser and works offline.
+
+1.6 localStorage for persistence
+- All state persisted through one small storage module.
+- No other code touches localStorage directly.
+- Storage carries a schema version so migrations stay possible.
+
+1.7 Conventions
+- Plain ES modules, no build step. Small files, one responsibility each.
+- Comments explain why, never what.
+- Changes are small; anything non-obvious gets a dev log entry.
+
+
+================================================================
+2. PROJECT SPECIFICATION
+================================================================
+
+2.1 What this is
+A single-user, browser-only hotel management app for day-to-day front
+desk operations on a small property. It replaces a paper/whiteboard
+workflow.
+
+2.2 Users and scope
+- One user (owner / front desk) on one device and one browser.
+- No accounts, no roles, no multi-user sync, no multi-property support.
+- Data lives only in that browser's localStorage.
+
+2.3 Feature areas
+Kept deliberately coarse. Details are decided feature by feature as we
+build, and recorded in the dev log.
+- Rooms: create and edit rooms.
+- Room states: the operational status of a room.
+- Reservations: guests staying in rooms over dates.
+- Calendar: the timeline view tying rooms and reservations together.
+
+Nothing else is in scope until these four are working.
+
+2.4 Out of scope (for now)
+- Accounts, auth, permissions, multi-user, server sync.
+- Payments, invoicing, tax, receipts, printing.
+- OTA / channel manager integrations, email, SMS.
+- Light theme, i18n, multi-language, multi-property.
+
+2.5 Tech baseline
+- Static files only: HTML, CSS, ES modules.
+- ES modules require a local HTTP server during development
+  (file:// blocks module imports). `python3 -m http.server` is enough.
+- No build, no transpile, no minify step. What is written is what ships.
+
+2.6 File layout
+  index.html            shell and semantic markup, no inline logic
+  css/tokens.css        palette, spacing, type scale — the theme swap point
+  css/app.css           layout and components
+  js/app.js             bootstrap and view switching
+  js/store.js           state container and persistence
+  js/views/*.js         one module per screen
+  js/components/*.js    small reusable render helpers
+  roadmap.txt           this file
+
+  Folders appear as they are needed, not in advance.
+
+2.7 Design direction
+- System font stack, no webfonts.
+- Dark neutrals for background and surfaces, one accent for the single
+  most important action on a screen.
+- Spacing on a 4px scale; type limited to a few sizes.
+
+
+================================================================
+3. DEV LOG
+================================================================
+Format per entry:
+  YYYY-MM-DD  what was done
+              why
+
+Newest entries at the bottom.
+
+(no entries yet)
+
+
+================================================================
+4. TODO TASKS
+================================================================
+
+(empty — used when we have work we are not doing right now)
+
+
+================================================================
+5. FUTURE FEATURES
+================================================================
+
+(empty by design — nothing goes here until the MVP works)
