@@ -121,14 +121,21 @@ Format per entry:
 
 Newest entries at the bottom.
 
-(no entries yet)
+2026-10-31  Rooms: creation flow in a native <dialog>, form and chip list together
+            why: focus trap, Esc-to-close, backdrop and top layer come free, so no
+            dependency and no overlay code to maintain. The dialog is mounted on
+            document.body because #view repaints on every store write and would
+            otherwise close itself mid-entry. Room type has no default and Add stays
+            disabled until one is picked, so every room is deliberately typed
+            instead of silently defaulted.
 
 
 ================================================================
 4. TODO TASKS
 ================================================================
 
-(empty — used when we have work we are not doing right now)
+- Edit and delete rooms (chips are read-only for now)
+- Show the room list in the Rooms view, not only inside the dialog
 
 
 ================================================================
