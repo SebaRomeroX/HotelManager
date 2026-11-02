@@ -185,6 +185,18 @@ Newest entries at the bottom.
             Any state other than occupied clears the stay fields so a stale
             countdown cannot resurface.
 
+2026-11-02  Cleaning rooms count down 60 → 50 → … → 10 minutes and turn vacant
+            at the hour; reconcileOccupancies renamed reconcileExpiries
+            why: the label uses ceil(remaining / 10 min) so it changes exactly at
+            each step — floor would drop to 50 after five minutes. Cleaning steps
+            are not wall-clock aligned (a room cleaned at 14:37 ticks at 14:47),
+            so the ticker sleeps until the earliest interesting moment across all
+            rooms rather than running one interval per room. Duration is a
+            constant like DAY_BOUNDARY_HOUR; a room already cleaning when this
+            shipped has no start time, so it shows a plain label and never flips —
+            same policy as legacy occupied. setRoomState now keeps at most one
+            timer live per room, so a stale countdown cannot resurface.
+
 
 ================================================================
 4. TODO TASKS
@@ -192,7 +204,7 @@ Newest entries at the bottom.
 
 - Deleting a room must first check that no reservation references it
 - Check-in sets occupied and check-out sets needs cleaning once reservations exist
-- Make the 10:00 boundary configurable once a settings screen exists
+- Make the 10:00 boundary and the cleaning durations configurable once a settings screen exists
 
 
 ================================================================

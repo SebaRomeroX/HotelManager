@@ -20,6 +20,8 @@ export const DEFAULT_STATE = "vacant";
 export const DAY_BOUNDARY_HOUR = 10;
 export const STAY_MIN_DAYS = 1;
 export const STAY_MAX_DAYS = 365;
+export const CLEANING_MINUTES = 60;
+export const CLEANING_STEP_MINUTES = 10;
 
 // The list above is also the ranking: state first, then name, everywhere a
 // room list is rendered.
@@ -96,18 +98,50 @@ export function remainingDays(now, stayStartedAt, days) {
 export function roomStateText(room, now = new Date()) {
   const label = stateLabel(room.state);
 
-  if (room.state !== "occupied" || !room.stayDays || !room.stayStartedAt) {
-    return label;
+  if (room.state === "occupied" && room.stayDays && room.stayStartedAt) {
+    const left = remainingDays(now, room.stayStartedAt, room.stayDays);
+    // Expired but not yet reconciled: preview what the flip will say.
+    if (left <= 0) return stateLabel("dirty");
+    return `${label} - ${left} ${left === 1 ? "day" : "days"}`;
   }
 
-  const left = remainingDays(now, room.stayStartedAt, room.stayDays);
-  // Expired but not yet reconciled: preview what the flip will say.
-  if (left <= 0) return stateLabel("dirty");
+  if (room.state === "cleaning" && room.cleaningStartedAt) {
+    const left = cleaningMinutesLeft(now, room.cleaningStartedAt);
+    if (left <= 0) return stateLabel("vacant");
+    return `${label} - ${left} min`;
+  }
 
-  return `${label} - ${left} ${left === 1 ? "day" : "days"}`;
+  return label;
 }
 
-// The only writer of a room's state and its stay fields.
+// Minutes left, rounded up to the step so the label changes exactly at 10, 20,
+// 30… minutes instead of drifting with every tick.
+export function cleaningMinutesLeft(now, cleaningStartedAt) {
+  const startedAt = new Date(cleaningStartedAt).getTime();
+  const elapsed = now.getTime() - startedAt;
+
+  if (elapsed <= 0) return CLEANING_MINUTES;
+  if (elapsed >= CLEANING_MINUTES * 60_000) return 0;
+
+  const stepMs = CLEANING_STEP_MINUTES * 60_000;
+  const remainingMs = CLEANING_MINUTES * 60_000 - elapsed;
+  return Math.ceil(remainingMs / stepMs) * CLEANING_STEP_MINUTES;
+}
+
+// The first step boundary strictly after `now`. Cleaning is not aligned to the
+// wall clock — a room cleaned at 14:37 ticks at 14:47, 14:57, 15:07.
+export function nextCleaningStep(cleaningStartedAt, now) {
+  const startedAt = new Date(cleaningStartedAt).getTime();
+  const stepMs = CLEANING_STEP_MINUTES * 60_000;
+  const elapsed = Math.max(0, now.getTime() - startedAt);
+  const steps = Math.floor(elapsed / stepMs) + 1;
+  return new Date(startedAt + steps * stepMs);
+}
+
+// The only writer of a room's state and its timer fields. At most one timer is
+// ever live: occupied sets stay* and drops cleaningStartedAt, cleaning does the
+// reverse, and every other state clears both so a stale countdown cannot
+// resurface.
 export function setRoomState(state, id, nextState, { days, now = new Date() } = {}) {
   if (nextState === "occupied") {
     const count = Number(days);
@@ -119,34 +153,59 @@ export function setRoomState(state, id, nextState, { days, now = new Date() } = 
       state: nextState,
       stayDays: count,
       stayStartedAt: now.toISOString(),
+      cleaningStartedAt: undefined,
     });
   }
 
-  // Leaving occupancy drops the stay so a stale countdown cannot resurface.
+  if (nextState === "cleaning") {
+    return updateRoom(state, id, {
+      state: nextState,
+      stayDays: undefined,
+      stayStartedAt: undefined,
+      cleaningStartedAt: now.toISOString(),
+    });
+  }
+
   return updateRoom(state, id, {
     state: nextState,
     stayDays: undefined,
     stayStartedAt: undefined,
+    cleaningStartedAt: undefined,
   });
 }
 
-// Expired stays become "needs cleaning". Returns the same reference when
-// nothing changed, so callers can skip writing to storage.
-export function reconcileOccupancies(state, now = new Date()) {
+// Which state a timed-out room falls into: a stay ends in "needs cleaning", a
+// cleaning session ends in "vacant". null means the room has no live timer.
+function expiredStateFor(room, now) {
+  if (room.state === "occupied" && room.stayDays && room.stayStartedAt) {
+    return remainingDays(now, room.stayStartedAt, room.stayDays) > 0
+      ? null
+      : "dirty";
+  }
+
+  if (room.state === "cleaning" && room.cleaningStartedAt) {
+    return cleaningMinutesLeft(now, room.cleaningStartedAt) > 0 ? null : "vacant";
+  }
+
+  return null;
+}
+
+// Apply both time-driven flips. Returns the same reference when nothing
+// changed, so callers can skip writing to storage.
+export function reconcileExpiries(state, now = new Date()) {
   let changed = false;
 
   const rooms = state.rooms.map((room) => {
-    if (room.state !== "occupied" || !room.stayDays || !room.stayStartedAt) {
-      return room;
-    }
-    if (remainingDays(now, room.stayStartedAt, room.stayDays) > 0) return room;
+    const next = expiredStateFor(room, now);
+    if (!next) return room;
 
     changed = true;
     return {
       ...room,
-      state: "dirty",
+      state: next,
       stayDays: undefined,
       stayStartedAt: undefined,
+      cleaningStartedAt: undefined,
       updatedAt: now.toISOString(),
     };
   });
