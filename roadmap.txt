@@ -129,6 +129,12 @@ Newest entries at the bottom.
             disabled until one is picked, so every room is deliberately typed
             instead of silently defaulted.
 
+2026-11-01  Dialog showed on load; chips reshaped into a stacked list
+            why: an author display on <dialog> overrides the UA rule that hides
+            it while closed, so flex now only applies via [open]. Chips were a
+            wrapped pill cloud and unreadable past a handful of rooms; they are
+            now full-width rows with the type on the right.
+
 
 ================================================================
 4. TODO TASKS
