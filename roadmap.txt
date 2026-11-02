@@ -197,6 +197,28 @@ Newest entries at the bottom.
             same policy as legacy occupied. setRoomState now keeps at most one
             timer live per room, so a stale countdown cannot resurface.
 
+2026-11-02  Stays count from the previous night when check-in lands between
+            00:00 and 03:59: 01:10 on the 2nd with 1 day now expires 10:00 on
+            the 2nd, not the 3rd. Supersedes the "only the arrival date counts"
+            wording in the occupancy entry above.
+            why: a check-in recorded at 01:10 "last night" did not flip at the
+            10:00 boundary its owner expected — the clock's date said the 2nd
+            while the night it bought was the 1st's. Night-of was chosen over
+            calendar-date with eyes open: a 01:10 + 1-day stay now ends that
+            same morning, which is short, but the calendar rule was wrong for
+            every small-hours arrival. Cutoff is NIGHT_OF_HOUR = 4, and the
+            hour must be read before startOfDay zeroes it — that ordering is
+            the whole rule.
+
+2026-11-02  Dev note: python http.server sends no Cache-Control, so the browser
+            heuristically caches modules — a stale js/app.js once hid the whole
+            ticker (the countdown rendered, nothing ever flipped). Hard-reload
+            after code changes while iterating.
+            why: heuristic freshness is 10% of the file's age, so a rarely-touched
+            entry script stays "fresh" for hours after it changes while files
+            edited minutes ago revalidate — mixing a stale entry with fresh
+            dependencies loses a feature silently, with no error anywhere.
+
 
 ================================================================
 4. TODO TASKS
@@ -204,7 +226,7 @@ Newest entries at the bottom.
 
 - Deleting a room must first check that no reservation references it
 - Check-in sets occupied and check-out sets needs cleaning once reservations exist
-- Make the 10:00 boundary and the cleaning durations configurable once a settings screen exists
+- Make the 10:00 boundary, the night-of cutoff and the cleaning durations configurable once a settings screen exists
 
 
 ================================================================

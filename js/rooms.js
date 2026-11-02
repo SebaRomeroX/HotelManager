@@ -18,6 +18,10 @@ export const DEFAULT_STATE = "vacant";
 // A stay runs in days that turn over at this hour, not at midnight: the
 // counter drops at 10:00 and the stay expires at 10:00 on arrival + N days.
 export const DAY_BOUNDARY_HOUR = 10;
+// Check-ins between 00:00 and 03:59 belong to the previous night: 01:10 on
+// the 2nd is a stay that began on the night of the 1st, so its days count
+// from the 1st and a 1-day stay ends at 10:00 on the 2nd.
+export const NIGHT_OF_HOUR = 4;
 export const STAY_MIN_DAYS = 1;
 export const STAY_MAX_DAYS = 365;
 export const CLEANING_MINUTES = 60;
@@ -58,17 +62,26 @@ export function stateLabel(value) {
   return ROOM_STATES.find((state) => state.value === value)?.label ?? value;
 }
 
-export function stayExpiry(stayStartedAt, days) {
-  const expiry = new Date(stayStartedAt);
-  expiry.setDate(expiry.getDate() + days);
-  expiry.setHours(DAY_BOUNDARY_HOUR, 0, 0, 0);
-  return expiry;
-}
-
 function startOfDay(date) {
   const copy = new Date(date);
   copy.setHours(0, 0, 0, 0);
   return copy;
+}
+
+// The calendar day a stay counts from. Reads the hour before startOfDay
+// zeroes it — that ordering is the whole rule.
+function arrivalDay(stayStartedAt) {
+  const raw = new Date(stayStartedAt);
+  const day = startOfDay(raw);
+  if (raw.getHours() < NIGHT_OF_HOUR) day.setDate(day.getDate() - 1);
+  return day;
+}
+
+export function stayExpiry(stayStartedAt, days) {
+  const expiry = arrivalDay(stayStartedAt);
+  expiry.setDate(expiry.getDate() + days);
+  expiry.setHours(DAY_BOUNDARY_HOUR, 0, 0, 0);
+  return expiry;
 }
 
 // Whole days left before the stay expires. The arrival day's own 10:00 never
@@ -78,8 +91,7 @@ export function remainingDays(now, stayStartedAt, days) {
   const expiry = stayExpiry(stayStartedAt, days);
   if (now >= expiry) return 0;
 
-  const arrivalDay = startOfDay(new Date(stayStartedAt));
-  const dayAfterArrival = new Date(arrivalDay);
+  const dayAfterArrival = arrivalDay(stayStartedAt);
   dayAfterArrival.setDate(dayAfterArrival.getDate() + 1);
 
   const today = startOfDay(now);
