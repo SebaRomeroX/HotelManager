@@ -4,12 +4,25 @@ export const ROOM_TYPES = [
   { value: "suite", label: "Suite" },
 ];
 
+export const ROOM_STATES = [
+  { value: "vacant", label: "Vacant" },
+  { value: "occupied", label: "Occupied" },
+  { value: "dirty", label: "Needs cleaning" },
+  { value: "cleaning", label: "Cleaning" },
+  { value: "oos", label: "Out of order" },
+];
+
 export const ROOM_NAME_MAX = 40;
+export const DEFAULT_STATE = "vacant";
 
 const NUMBERED_NAME = /^Room (\d+)$/;
 
 export function typeLabel(value) {
   return ROOM_TYPES.find((type) => type.value === value)?.label ?? value;
+}
+
+export function stateLabel(value) {
+  return ROOM_STATES.find((state) => state.value === value)?.label ?? value;
 }
 
 // Highest existing number plus one, so deleting Room 2 never hands out a name
@@ -54,6 +67,7 @@ export function addRoom(state, { name, type }) {
     id: newId(),
     name: name.trim(),
     type,
+    state: DEFAULT_STATE,
     createdAt: new Date().toISOString(),
   };
 

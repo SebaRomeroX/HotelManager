@@ -1,5 +1,7 @@
+import { DEFAULT_STATE } from "./rooms.js";
+
 const STORAGE_KEY = "hotelmanager:state";
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const listeners = new Set();
 
@@ -12,8 +14,18 @@ function emptyState() {
 }
 
 function migrate(state) {
-  // Each future schema bump gets a step here, transforming the previous shape
-  // into the next one instead of discarding the user's data.
+  // Any state written before version 2 predates room states. Spreading the room
+  // after the default keeps a room that already carries a state of its own.
+  if (!(state.version >= SCHEMA_VERSION)) {
+    return {
+      ...state,
+      version: SCHEMA_VERSION,
+      rooms: Array.isArray(state.rooms)
+        ? state.rooms.map((room) => ({ state: DEFAULT_STATE, ...room }))
+        : [],
+    };
+  }
+
   return state;
 }
 

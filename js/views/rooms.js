@@ -1,6 +1,7 @@
 import { getState } from "../store.js";
-import { typeLabel } from "../rooms.js";
+import { DEFAULT_STATE, stateLabel, typeLabel } from "../rooms.js";
 import { openRoomsDialog } from "../components/rooms-dialog.js";
+import { openStateDialog } from "../components/state-dialog.js";
 
 export const title = "Rooms";
 
@@ -33,18 +34,37 @@ function cardGrid(rooms) {
 }
 
 function roomCard(room) {
-  const card = document.createElement("article");
-  card.className = "card";
+  // Headings are not valid inside a button, so the card's name is a span; the
+  // accessible name is set explicitly below.
+  const card = document.createElement("button");
+  card.type = "button";
+  card.className = `card card--${room.state ?? DEFAULT_STATE}`;
+  card.dataset.id = room.id;
+  card.setAttribute(
+    "aria-label",
+    `${room.name}, ${typeLabel(room.type)}, ${stateLabel(room.state)} — set state`,
+  );
+  card.addEventListener("click", () => openStateDialog(room.id));
 
-  const name = document.createElement("h3");
+  const name = document.createElement("span");
   name.className = "card__name";
   name.textContent = room.name;
 
-  const type = document.createElement("p");
+  const type = document.createElement("span");
   type.className = "card__type";
   type.textContent = typeLabel(room.type);
 
-  card.append(name, type);
+  const state = document.createElement("span");
+  state.className = "card__state";
+
+  const dot = document.createElement("span");
+  dot.className = "state-dot";
+
+  const label = document.createElement("span");
+  label.textContent = stateLabel(room.state);
+
+  state.append(dot, label);
+  card.append(name, type, state);
   return card;
 }
 

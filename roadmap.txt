@@ -149,12 +149,25 @@ Newest entries at the bottom.
             the chip list inside Manage Rooms — and a second entry point would
             have to keep its own copy of the edit flow in sync.
 
+2026-11-02  Room states: vacant, occupied, needs cleaning, cleaning, out of
+            order; tapping a card opens a sheet to pick one. Schema bumped to 2
+            so existing rooms gain a state.
+            why: a popover anchored to a 158px card clips at 360px and needs
+            flip-and-clamp code we would own forever, while a second <dialog>
+            reuses the focus trap, Esc and backdrop already paid for in Manage
+            Rooms. "Cleaning" replaced "In cleaning" so the state reads as "the
+            room is cleaning", parallel to "occupied". Occupied is violet so it
+            cannot collide with --accent, which owns buttons and the focus ring.
+            Cards are interactive again, superseding the entry above: they now
+            have a job.
+
 
 ================================================================
 4. TODO TASKS
 ================================================================
 
 - Deleting a room must first check that no reservation references it
+- Check-in sets occupied and check-out sets needs cleaning once reservations exist
 
 
 ================================================================

@@ -349,19 +349,123 @@ p {
   gap: var(--space-3);
 }
 
+.card--vacant,
+.state-row--vacant {
+  --state: var(--state-vacant);
+}
+
+.card--occupied,
+.state-row--occupied {
+  --state: var(--state-occupied);
+}
+
+.card--dirty,
+.state-row--dirty {
+  --state: var(--state-dirty);
+}
+
+.card--cleaning,
+.state-row--cleaning {
+  --state: var(--state-cleaning);
+}
+
+.card--oos,
+.state-row--oos {
+  --state: var(--state-oos);
+}
+
 .card {
   display: grid;
   gap: var(--space-1);
   padding: var(--space-4);
-  border: 1px solid var(--border);
+  border: 1px solid var(--state, var(--border));
   border-radius: var(--radius);
   background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
   overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.card:hover,
+.card:active {
+  background: var(--surface-raised);
 }
 
 .card__name {
   font-size: var(--text-base);
   font-weight: 600;
+}
+
+.card__state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--state, var(--text-muted));
+}
+
+.state-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.state-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.state-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.state-row:hover,
+.state-row:active {
+  background: var(--surface-raised);
+}
+
+.state-row[aria-current="true"] {
+  border-color: var(--state, var(--border));
+}
+
+.state-row__dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--state, var(--text-muted));
+}
+
+.state-row__label {
+  flex: 1;
+}
+
+.state-row__check {
+  color: var(--state, var(--text));
+  visibility: hidden;
+}
+
+.state-row[aria-current="true"] .state-row__check {
+  visibility: visible;
 }
 
 .hint {

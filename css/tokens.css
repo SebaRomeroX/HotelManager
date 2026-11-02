@@ -11,6 +11,12 @@
   --accent: #4f9cf9;
   --danger: #e5534b;
 
+  --state-vacant: #4ade80;
+  --state-occupied: #c084fc;
+  --state-dirty: #fbbf24;
+  --state-cleaning: #38bdf8;
+  --state-oos: #e5534b;
+
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
