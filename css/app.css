@@ -468,6 +468,29 @@ p {
   visibility: visible;
 }
 
+.days-form {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+/* Author display beats the UA rule behind the hidden attribute. */
+.days-form[hidden] {
+  display: none;
+}
+
+.input--days {
+  max-width: 140px;
+  -moz-appearance: textfield;
+}
+
+.input--days::-webkit-outer-spin-button,
+.input--days::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 .hint {
   color: var(--text-muted);
   font-size: var(--text-sm);

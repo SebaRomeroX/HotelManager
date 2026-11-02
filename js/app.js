@@ -2,6 +2,7 @@ import * as rooms from "./views/rooms.js";
 import * as reservations from "./views/reservations.js";
 import * as calendar from "./views/calendar.js";
 import { subscribe } from "./store.js";
+import { subscribeTick } from "./ticker.js";
 
 const routes = { rooms, reservations, calendar };
 const DEFAULT_ROUTE = "rooms";
@@ -34,5 +35,8 @@ window.addEventListener("hashchange", render);
 
 // Views read from the store directly, so any write has to repaint them.
 subscribe(render);
+
+// The day count moves at the 10:00 boundary even when nothing flips.
+subscribeTick(render);
 
 render();

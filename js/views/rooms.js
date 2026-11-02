@@ -1,5 +1,10 @@
 import { getState } from "../store.js";
-import { DEFAULT_STATE, sortRooms, stateLabel, typeLabel } from "../rooms.js";
+import {
+  DEFAULT_STATE,
+  roomStateText,
+  sortRooms,
+  typeLabel,
+} from "../rooms.js";
 import { openRoomsDialog } from "../components/rooms-dialog.js";
 import { openStateDialog } from "../components/state-dialog.js";
 
@@ -34,6 +39,8 @@ function cardGrid(rooms) {
 }
 
 function roomCard(room) {
+  const stateText = roomStateText(room);
+
   // Headings are not valid inside a button, so the card's name is a span; the
   // accessible name is set explicitly below.
   const card = document.createElement("button");
@@ -42,7 +49,7 @@ function roomCard(room) {
   card.dataset.id = room.id;
   card.setAttribute(
     "aria-label",
-    `${room.name}, ${typeLabel(room.type)}, ${stateLabel(room.state)} — set state`,
+    `${room.name}, ${typeLabel(room.type)}, ${stateText} — set state`,
   );
   card.addEventListener("click", () => openStateDialog(room.id));
 
@@ -61,7 +68,7 @@ function roomCard(room) {
   dot.className = "state-dot";
 
   const label = document.createElement("span");
-  label.textContent = stateLabel(room.state);
+  label.textContent = stateText;
 
   state.append(dot, label);
   card.append(name, type, state);

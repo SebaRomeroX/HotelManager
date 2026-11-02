@@ -171,6 +171,20 @@ Newest entries at the bottom.
             otherwise float them to the top. numeric:true keeps "Room 10" after
             "Room 9" — a hotel passes nine rooms quickly.
 
+2026-11-02  Occupancy time tracking: setting occupied asks for days, the card
+            label counts down (OCCUPIED - 3 DAYS), and expiry flips the room to
+            needs cleaning. New js/ticker.js drives the boundary.
+            why: days turn over at 10:00 rather than midnight, so only the
+            arrival date counts — arriving at 08:00 must not burn a day at 10:00
+            two hours later, and the stay ends at 10:00 on arrival + N. The
+            expiry is derived from stayStartedAt and stayDays instead of stored,
+            so two copies of one deadline cannot drift across a DST change or a
+            clock edit. Nothing can run in the background, so a stay that expires
+            while the app is closed flips on the next load: the ticker reconciles
+            at import, on focus, every minute, and precisely at the boundary.
+            Any state other than occupied clears the stay fields so a stale
+            countdown cannot resurface.
+
 
 ================================================================
 4. TODO TASKS
@@ -178,6 +192,7 @@ Newest entries at the bottom.
 
 - Deleting a room must first check that no reservation references it
 - Check-in sets occupied and check-out sets needs cleaning once reservations exist
+- Make the 10:00 boundary configurable once a settings screen exists
 
 
 ================================================================
