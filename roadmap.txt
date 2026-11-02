@@ -161,6 +161,16 @@ Newest entries at the bottom.
             Cards are interactive again, superseding the entry above: they now
             have a job.
 
+2026-11-02  Rooms list in state order — vacant, cleaning, needs cleaning,
+            occupied, out of order — with numeric-aware name sort inside each
+            state; applies to both the card grid and the Manage Rooms chips
+            why: ROOM_STATES became the single ranking, so the picker sheet
+            reorders to match rather than carrying a second list that would
+            drift. Sorting copies first because Array#sort mutates, and unknown
+            states are ranked last because findIndex returns -1, which would
+            otherwise float them to the top. numeric:true keeps "Room 10" after
+            "Room 9" — a hotel passes nine rooms quickly.
+
 
 ================================================================
 4. TODO TASKS

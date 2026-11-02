@@ -6,6 +6,7 @@ import {
   hasRoomNamed,
   nextRoomName,
   removeRoom,
+  sortRooms,
   typeLabel,
   updateRoom,
 } from "../rooms.js";
@@ -197,7 +198,7 @@ function roomChip(room) {
 }
 
 function renderChips() {
-  const { rooms } = getState();
+  const rooms = sortRooms(getState().rooms);
 
   countLabel.textContent = rooms.length ? `Rooms (${rooms.length})` : "Rooms";
 

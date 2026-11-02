@@ -1,5 +1,5 @@
 import { getState } from "../store.js";
-import { DEFAULT_STATE, stateLabel, typeLabel } from "../rooms.js";
+import { DEFAULT_STATE, sortRooms, stateLabel, typeLabel } from "../rooms.js";
 import { openRoomsDialog } from "../components/rooms-dialog.js";
 import { openStateDialog } from "../components/state-dialog.js";
 
@@ -20,7 +20,7 @@ export function render() {
   manage.setAttribute("aria-haspopup", "dialog");
   manage.addEventListener("click", () => openRoomsDialog());
 
-  const { rooms } = getState();
+  const rooms = sortRooms(getState().rooms);
 
   section.append(heading, manage, rooms.length ? cardGrid(rooms) : noRooms());
   return section;

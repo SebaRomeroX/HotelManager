@@ -6,16 +6,41 @@ export const ROOM_TYPES = [
 
 export const ROOM_STATES = [
   { value: "vacant", label: "Vacant" },
-  { value: "occupied", label: "Occupied" },
-  { value: "dirty", label: "Needs cleaning" },
   { value: "cleaning", label: "Cleaning" },
+  { value: "dirty", label: "Needs cleaning" },
+  { value: "occupied", label: "Occupied" },
   { value: "oos", label: "Out of order" },
 ];
 
 export const ROOM_NAME_MAX = 40;
 export const DEFAULT_STATE = "vacant";
 
+// The list above is also the ranking: state first, then name, everywhere a
+// room list is rendered.
+const STATE_RANK = new Map(
+  ROOM_STATES.map((state, index) => [state.value, index]),
+);
+
 const NUMBERED_NAME = /^Room (\d+)$/;
+
+export function sortRooms(rooms) {
+  return [...rooms].sort((a, b) => {
+    // Unknown states rank last rather than first, which is what -1 would do.
+    const rank =
+      (STATE_RANK.get(a.state) ?? STATE_RANK.size) -
+      (STATE_RANK.get(b.state) ?? STATE_RANK.size);
+
+    // numeric keeps "Room 10" after "Room 9"; base ignores case so a tie
+    // falls through to the stable sort instead of comparing capitalisation.
+    return (
+      rank ||
+      a.name.localeCompare(b.name, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      })
+    );
+  });
+}
 
 export function typeLabel(value) {
   return ROOM_TYPES.find((type) => type.value === value)?.label ?? value;
