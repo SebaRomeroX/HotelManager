@@ -335,11 +335,33 @@ p {
   background: var(--surface-raised);
 }
 
-.chip__type {
+.chip__type,
+.card__type {
   color: var(--text-muted);
   font-size: var(--text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-3);
+}
+
+.card {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.card__name {
+  font-size: var(--text-base);
+  font-weight: 600;
 }
 
 .hint {

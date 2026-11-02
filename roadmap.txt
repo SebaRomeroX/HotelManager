@@ -143,12 +143,17 @@ Newest entries at the bottom.
             first tap rather than calling confirm(), which blocks the page and
             cannot be styled.
 
+2026-11-01  Rooms screen shows a two-up card grid; the room count line is gone
+            why: the grid already shows how many rooms exist, so a number above
+            it was noise. Cards are static because editing already has one home —
+            the chip list inside Manage Rooms — and a second entry point would
+            have to keep its own copy of the edit flow in sync.
+
 
 ================================================================
 4. TODO TASKS
 ================================================================
 
-- Show the room list in the Rooms view, not only inside the dialog
 - Deleting a room must first check that no reservation references it
 
 
