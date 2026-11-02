@@ -154,6 +154,28 @@ p {
   cursor: not-allowed;
 }
 
+.btn--danger {
+  border-color: var(--danger);
+  background: transparent;
+  color: var(--danger);
+}
+
+.btn--danger.btn--armed {
+  background: var(--danger);
+  color: #1a0b0a;
+}
+
+.form__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+/* Author display beats the UA rule behind the hidden attribute. */
+.form__actions[hidden] {
+  display: none;
+}
+
 .dialog {
   position: fixed;
   inset: auto 0 0;
@@ -289,6 +311,7 @@ p {
 }
 
 .chip {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -297,7 +320,19 @@ p {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
+  font: inherit;
   font-size: var(--text-sm);
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--text-muted);
+}
+
+.chip:active {
+  background: var(--surface-raised);
 }
 
 .chip__type {

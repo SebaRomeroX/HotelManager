@@ -135,13 +135,21 @@ Newest entries at the bottom.
             wrapped pill cloud and unreadable past a handful of rooms; they are
             now full-width rows with the type on the right.
 
+2026-11-01  Chips are buttons; tapping one loads the room into the form as edit
+            mode with Save, Cancel and a two-step Delete
+            why: a span chip is unreachable by keyboard, so it became a real
+            button. Edit state is transient UI rather than app data, so it lives
+            in the component instead of the store. Delete arms itself on the
+            first tap rather than calling confirm(), which blocks the page and
+            cannot be styled.
+
 
 ================================================================
 4. TODO TASKS
 ================================================================
 
-- Edit and delete rooms (chips are read-only for now)
 - Show the room list in the Rooms view, not only inside the dialog
+- Deleting a room must first check that no reservation references it
 
 
 ================================================================

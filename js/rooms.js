@@ -23,9 +23,30 @@ export function nextRoomName(rooms) {
   return `Room ${highest + 1}`;
 }
 
-export function hasRoomNamed(rooms, name) {
+export function hasRoomNamed(rooms, name, exceptId = null) {
   const needle = name.trim().toLowerCase();
-  return rooms.some((room) => room.name.trim().toLowerCase() === needle);
+  return rooms.some(
+    (room) =>
+      room.id !== exceptId && room.name.trim().toLowerCase() === needle,
+  );
+}
+
+export function updateRoom(state, id, patch) {
+  return {
+    ...state,
+    rooms: state.rooms.map((room) =>
+      room.id === id
+        ? { ...room, ...patch, updatedAt: new Date().toISOString() }
+        : room,
+    ),
+  };
+}
+
+export function removeRoom(state, id) {
+  return {
+    ...state,
+    rooms: state.rooms.filter((room) => room.id !== id),
+  };
 }
 
 export function addRoom(state, { name, type }) {
