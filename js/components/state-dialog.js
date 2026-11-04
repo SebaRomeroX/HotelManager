@@ -87,7 +87,7 @@ function render() {
 
   // The hold is derived, so it appears and disappears with the assignment —
   // including under this sheet if the store changes while it is open.
-  const arriving = arrivingAssignment(getState()).get(roomId);
+  const arriving = arrivingAssignment(getState()).get(activeRoomId);
   arrivingHint.hidden = !arriving;
   if (arriving) arrivingHint.textContent = `${arriving.hostName} arrives today`;
 

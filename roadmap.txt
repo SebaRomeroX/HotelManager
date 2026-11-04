@@ -298,6 +298,23 @@ Newest entries at the bottom.
             cleaning steps, so sections roll and no-shows expire exactly on
             time instead of at the next stray repaint.
 
+2026-11-04  Fix: tapping a state in the room-state sheet no longer throws —
+            picking a state now applies it and closes the sheet. render() read
+            `roomId`, a name that only exists as a local inside the row click
+            handler, so every store write died on a ReferenceError.
+            why: the failure order is what made it look like a save bug —
+            the store persists BEFORE notifying listeners, so the state change
+            was already on disk (hence "refresh and you'll see it") while the
+            throw unwound commit() before dialog.close(), leaving the modal
+            open over a half-repainted view. Fixed to activeRoomId. Notably
+            invisible to our static battery: node --check and the
+            import-resolution pass both accept undefined identifiers — the new
+            Playwright smoke suite (/tmp/opencode/smoke/smoke.mjs, Chromium
+            against a local server) is what catches this class: it failed with
+            "ReferenceError: roomId is not defined" against the old code and
+            passes clean now, covering state changes, the days form, the
+            arriving hold, check-in and read-only sheets end to end.
+
 
 ================================================================
 4. TODO TASKS
