@@ -154,6 +154,11 @@ p {
   cursor: not-allowed;
 }
 
+/* Author display beats the UA rule behind the hidden attribute. */
+.btn[hidden] {
+  display: none;
+}
+
 .btn--danger {
   border-color: var(--danger);
   background: transparent;
@@ -169,6 +174,11 @@ p {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--space-2);
+}
+
+/* Read-only mode leaves a single button; don't leave it half width. */
+.form__actions--single {
+  grid-template-columns: 1fr;
 }
 
 /* Author display beats the UA rule behind the hidden attribute. */
@@ -512,6 +522,19 @@ p {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.res-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.res-group__title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .res-row {

@@ -1,4 +1,4 @@
-import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS } from "./rooms.js";
+import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS, typeLabel } from "./rooms.js";
 
 export const RESERVATION_NAME_MAX = 80;
 
@@ -61,11 +61,7 @@ export function formatDate(value) {
 // names a form control; null when valid. Shared by the dialog (to show and
 // focus the error) and addReservation/updateReservation (to refuse the write),
 // so the two can never disagree about what is acceptable.
-//
-// currentDate is the arrival date already on the record: a booking that has
-// arrived keeps its date through an edit, but any changed date must still be
-// a night to come.
-export function reservationError(values, today = new Date(), { currentDate } = {}) {
+export function reservationError(values, today = new Date()) {
   const hostName = (values.hostName ?? "").trim();
   if (!hostName) return { field: "hostName", message: "Give the host a name." };
   if (hostName.length > RESERVATION_NAME_MAX) {
@@ -82,9 +78,10 @@ export function reservationError(values, today = new Date(), { currentDate } = {
   }
 
   // A reservation books a night to come; stays that already happened are
-  // recorded by the room itself, not by a backfilled booking. The one
-  // exception is a date the user did not touch.
-  if (arrival < startOfDay(today) && values.arrivalDate !== currentDate) {
+  // recorded by the room itself, not by a backfilled booking. Past bookings
+  // are not editable at all (see isPastReservation), so no edit path can ever
+  // trip this rule with an unchanged date.
+  if (arrival < startOfDay(today)) {
     return { field: "arrivalDate", message: "The arrival date can't be in the past." };
   }
 
@@ -97,6 +94,15 @@ export function reservationError(values, today = new Date(), { currentDate } = {
   }
 
   return null;
+}
+
+// Past means the arrival date has passed — the same line the sections draw,
+// so a row sitting in Past can never be edited from under it. An unparseable
+// date counts as past too: a corrupt entry lands in the read-only section
+// where it can still be cancelled, instead of sitting in Incoming forever.
+export function isPastReservation(reservation, today = new Date()) {
+  const arrival = parseDate(reservation.arrivalDate);
+  return !arrival || arrival < startOfDay(today);
 }
 
 // Upcoming first (soonest arrival), then the past with the most recent first —
@@ -134,6 +140,44 @@ export function relativeDayLabel(arrivalDate, today = new Date()) {
   return `${-days} days ago`;
 }
 
+// The meta line shared by the list row and the read-only sheet, so what a
+// reservation looks like in both places comes from one place.
+export function reservationMeta(reservation) {
+  const checkout = checkoutDate(reservation.arrivalDate, reservation.days);
+  const days = `${reservation.days} ${reservation.days === 1 ? "day" : "days"}`;
+  return (
+    `${typeLabel(reservation.roomType)} · ` +
+    `${formatDate(reservation.arrivalDate)} → ${formatDate(checkout)} · ${days}`
+  );
+}
+
+// The three sections of the list, each already in display order: today by
+// name (one date), incoming soonest first, past most recent first. One sort
+// then a stable partition keeps section order and row order from drifting
+// apart, and both draw the past line through isPastReservation.
+export function groupReservations(reservations, today = new Date()) {
+  const sorted = sortReservations(reservations, today);
+  const todayStart = startOfDay(today);
+  const groups = { today: [], incoming: [], past: [] };
+
+  for (const reservation of sorted) {
+    if (isPastReservation(reservation, today)) {
+      groups.past.push(reservation);
+      continue;
+    }
+
+    // Not past, so the date parsed — compare it against today's midnight.
+    const arrival = parseDate(reservation.arrivalDate);
+    if (arrival.getTime() === todayStart.getTime()) {
+      groups.today.push(reservation);
+    } else {
+      groups.incoming.push(reservation);
+    }
+  }
+
+  return groups;
+}
+
 export function addReservation(state, values, today = new Date()) {
   if (reservationError(values, today)) return state;
 
@@ -153,12 +197,14 @@ export function addReservation(state, values, today = new Date()) {
 
 // The host name is deliberately absent: who the booking belongs to is fixed
 // at creation, so only the stay details (and the record stamp) can move.
+// A past booking's stay details do not move either — it is history.
 export function updateReservation(state, id, values, today = new Date()) {
   const reservations = state.reservations ?? [];
   const current = reservations.find((reservation) => reservation.id === id);
   if (!current) return state;
+  if (isPastReservation(current, today)) return state;
 
-  const problem = reservationError(values, today, { currentDate: current.arrivalDate });
+  const problem = reservationError(values, today);
   if (problem) return state;
 
   return {

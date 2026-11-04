@@ -1,14 +1,19 @@
 import { getState } from "../store.js";
-import { typeLabel } from "../rooms.js";
 import {
-  checkoutDate,
-  formatDate,
+  groupReservations,
+  isPastReservation,
   relativeDayLabel,
-  sortReservations,
+  reservationMeta,
 } from "../reservations.js";
 import { openReservationDialog } from "../components/reservation-dialog.js";
 
 export const title = "Reservations";
+
+const GROUPS = [
+  ["Today", "today"],
+  ["Incoming", "incoming"],
+  ["Past", "past"],
+];
 
 export function render() {
   const section = document.createElement("section");
@@ -26,26 +31,45 @@ export function render() {
   create.setAttribute("aria-haspopup", "dialog");
   create.addEventListener("click", () => openReservationDialog());
 
-  const reservations = sortReservations(getState().reservations ?? []);
+  const groups = groupReservations(getState().reservations ?? []);
+  const total = GROUPS.reduce((count, [, key]) => count + groups[key].length, 0);
 
-  section.append(heading, create, reservations.length ? list(reservations) : noReservations());
+  section.append(heading, create);
+  if (total === 0) {
+    section.append(noReservations());
+  } else {
+    section.append(...GROUPS.map(([label, key]) => group(groups[key], label)).filter(Boolean));
+  }
   return section;
 }
 
-function list(reservations) {
+// Empty groups vanish entirely rather than showing a heading over nothing.
+function group(reservations, label) {
+  if (reservations.length === 0) return null;
+
+  const block = document.createElement("section");
+  block.className = "res-group";
+
+  const id = `res-group-${label.toLowerCase()}`;
+  block.setAttribute("aria-labelledby", id);
+
+  const heading = document.createElement("h3");
+  heading.className = "res-group__title";
+  heading.id = id;
+  heading.textContent = label;
+
   const ul = document.createElement("ul");
   ul.className = "res-list";
   ul.append(...reservations.map(row));
-  return ul;
+
+  block.append(heading, ul);
+  return block;
 }
 
 function row(reservation) {
   const item = document.createElement("li");
-
-  const checkout = checkoutDate(reservation.arrivalDate, reservation.days);
-  const range = `${formatDate(reservation.arrivalDate)} → ${formatDate(checkout)}`;
-  const days = `${reservation.days} ${reservation.days === 1 ? "day" : "days"}`;
   const dayLabel = relativeDayLabel(reservation.arrivalDate);
+  const past = isPastReservation(reservation);
 
   // Headings are not valid inside a button, so the name is a span; the
   // accessible name is set explicitly below — same pattern as room cards.
@@ -55,7 +79,8 @@ function row(reservation) {
   button.dataset.id = reservation.id;
   button.setAttribute(
     "aria-label",
-    `${reservation.hostName}, ${typeLabel(reservation.roomType)}, ${range}, ${days}, ${dayLabel} — edit`,
+    `${reservation.hostName}, ${reservationMeta(reservation)}, ` +
+      `${dayLabel} — ${past ? "view" : "edit"}`,
   );
   button.addEventListener("click", () => openReservationDialog(reservation.id));
 
@@ -68,7 +93,7 @@ function row(reservation) {
 
   const meta = document.createElement("span");
   meta.className = "res-row__meta";
-  meta.textContent = `${typeLabel(reservation.roomType)} · ${range} · ${days}`;
+  meta.textContent = reservationMeta(reservation);
 
   main.append(name, meta);
 

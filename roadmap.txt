@@ -254,6 +254,25 @@ Newest entries at the bottom.
             button, falling back to New reservation after a cancel removes
             it — the repaint detached the opener the browser would restore.
 
+2026-11-04  Reservations split into three sections — Today, Incoming, Past —
+            and past bookings became read-only: tapping one opens the sheet
+            with host and stay details as static text, no inputs, no save,
+            only the two-step Cancel reservation. Supersedes yesterday's
+            "unchanged past date OK" edit rule: the currentDate option is gone
+            from reservationError because an editable booking can now only
+            ever have an arrival date of today or later. The meta line moved
+            into reservationMeta() so the row and the read-only sheet cannot
+            print different ranges.
+            why: isPastReservation draws the one past line — arrival before
+            today — and both the section grouping and the edit lock go through
+            it, so a row shown under Past can never be edited from under it.
+            An unparseable date counts as past as well: a corrupt entry lands
+            in the read-only section where it can still be cancelled instead
+            of sitting in Incoming forever. updateReservation refuses past
+            bookings outright, so even a stale tap or a sheet left open across
+            midnight cannot rewrite history — while delete stays allowed,
+            because removing a wrong record is not editing one.
+
 
 ================================================================
 4. TODO TASKS

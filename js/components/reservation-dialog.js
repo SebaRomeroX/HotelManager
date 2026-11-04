@@ -3,8 +3,10 @@ import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS } from "../rooms.js";
 import {
   RESERVATION_NAME_MAX,
   addReservation,
+  isPastReservation,
   removeReservation,
   reservationError,
+  reservationMeta,
   updateReservation,
 } from "../reservations.js";
 
@@ -75,6 +77,8 @@ dialog.innerHTML = `
 
       <p class="hint" data-host hidden></p>
 
+      <p class="hint" data-meta hidden></p>
+
       <p class="error" id="reservation-error" role="alert" hidden></p>
 
       <button class="btn btn--primary btn--block" type="submit" disabled>
@@ -101,6 +105,8 @@ const actions = dialog.querySelector("[data-edit-actions]");
 const editCancelButton = dialog.querySelector("[data-edit-cancel]");
 const cancelResButton = dialog.querySelector("[data-cancel-res]");
 const hostHint = dialog.querySelector("[data-host]");
+const metaHint = dialog.querySelector("[data-meta]");
+const typeField = dialog.querySelector("fieldset");
 
 // Edit state is transient UI, so it stays here instead of going in the store.
 let editingId = null;
@@ -140,19 +146,41 @@ function resetCancelConfirm() {
   cancelResButton.classList.remove("btn--armed");
 }
 
+// A past booking is history: everything shows as text and only the two-step
+// cancel stays live.
+function readOnly() {
+  const reservation = findEditing();
+  return reservation !== undefined && isPastReservation(reservation);
+}
+
 function syncMode() {
   const editing = editingId !== null;
+  const readonly = readOnly();
 
-  title.textContent = editing ? "Edit reservation" : "New reservation";
+  title.textContent = !editing
+    ? "New reservation"
+    : readonly
+      ? "Past reservation"
+      : "Edit reservation";
   addButton.textContent = editing ? "Save changes" : "Add reservation";
   actions.hidden = !editing;
+  actions.classList.toggle("form__actions--single", readonly);
+  editCancelButton.hidden = readonly;
   // The name belongs to the booking for good: show it as text, not a field.
   nameField.hidden = editing;
   hostHint.hidden = !editing;
+  metaHint.hidden = !readonly;
+
+  // Read-only hides the whole form: static lines instead of inputs.
+  typeField.hidden = readonly;
+  dateInput.closest(".field").hidden = readonly;
+  daysInput.closest(".field").hidden = readonly;
+  addButton.hidden = readonly;
 
   if (editing) {
     const reservation = findEditing();
     hostHint.textContent = reservation ? `Host: ${reservation.hostName}` : "";
+    if (readonly && reservation) metaHint.textContent = reservationMeta(reservation);
   }
 
   resetCancelConfirm();
@@ -194,7 +222,7 @@ function prefill() {
   );
   if (radio) radio.checked = true;
 
-  // May sit in the past — an arrived booking keeps its date through an edit.
+  // Read-only never reaches here, so the date is always a night to come.
   dateInput.value = reservation.arrivalDate;
   daysInput.value = String(reservation.days);
   addButton.disabled = false;
@@ -221,11 +249,11 @@ form.addEventListener("input", (event) => clearErrorFor(event.target));
 form.addEventListener("submit", (event) => {
   event.preventDefault();
 
+  // Belt: hidden fields should make this unreachable for a past booking.
+  if (readOnly()) return;
+
   const values = readValues();
-  const problem = reservationError(values, undefined, {
-    currentDate:
-      editingId === null ? undefined : findEditing()?.arrivalDate,
-  });
+  const problem = reservationError(values);
 
   if (problem) {
     setError(problem);
@@ -292,20 +320,22 @@ export function openReservationDialog(reservationId = null) {
     return;
   }
 
+  const readonly = readOnly();
   resetForm();
-  if (editingId !== null) prefill();
+  if (editingId !== null && !readonly) prefill();
 
   dialog.showModal();
-  if (editingId !== null) {
+  if (editingId === null) {
+    nameInput.focus();
+  } else if (!readonly) {
     // First checked radio, else the first one: a comma selector alone would
     // return the topmost option regardless of which one is checked.
     const typeRadio =
       form.querySelector('input[name="roomType"]:checked') ??
       form.querySelector('input[name="roomType"]');
     typeRadio?.focus();
-  } else {
-    nameInput.focus();
   }
+  // Read-only leaves the browser's own focus on the header Close button.
 }
 
 document.body.append(dialog);
