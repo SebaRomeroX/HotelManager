@@ -242,6 +242,11 @@ p {
   border: 0;
 }
 
+/* Author display beats the UA rule behind the hidden attribute. */
+.field[hidden] {
+  display: none;
+}
+
 .field__label {
   padding: 0;
   color: var(--text-muted);
@@ -510,6 +515,7 @@ p {
 }
 
 .res-row {
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -518,6 +524,18 @@ p {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.res-row:hover {
+  border-color: var(--text-muted);
+}
+
+.res-row:active {
+  background: var(--surface-raised);
 }
 
 .res-row__main {

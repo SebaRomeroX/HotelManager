@@ -59,9 +59,13 @@ export function formatDate(value) {
 
 // The first problem with a set of values, as { field, message } where field
 // names a form control; null when valid. Shared by the dialog (to show and
-// focus the error) and addReservation (to refuse the write), so the two can
-// never disagree about what is acceptable.
-export function reservationError(values, today = new Date()) {
+// focus the error) and addReservation/updateReservation (to refuse the write),
+// so the two can never disagree about what is acceptable.
+//
+// currentDate is the arrival date already on the record: a booking that has
+// arrived keeps its date through an edit, but any changed date must still be
+// a night to come.
+export function reservationError(values, today = new Date(), { currentDate } = {}) {
   const hostName = (values.hostName ?? "").trim();
   if (!hostName) return { field: "hostName", message: "Give the host a name." };
   if (hostName.length > RESERVATION_NAME_MAX) {
@@ -78,8 +82,9 @@ export function reservationError(values, today = new Date()) {
   }
 
   // A reservation books a night to come; stays that already happened are
-  // recorded by the room itself, not by a backfilled booking.
-  if (arrival < startOfDay(today)) {
+  // recorded by the room itself, not by a backfilled booking. The one
+  // exception is a date the user did not touch.
+  if (arrival < startOfDay(today) && values.arrivalDate !== currentDate) {
     return { field: "arrivalDate", message: "The arrival date can't be in the past." };
   }
 
@@ -144,6 +149,42 @@ export function addReservation(state, values, today = new Date()) {
   // Written before the reservations slot existed: keep the append working.
   const reservations = state.reservations ?? [];
   return { ...state, reservations: [...reservations, reservation] };
+}
+
+// The host name is deliberately absent: who the booking belongs to is fixed
+// at creation, so only the stay details (and the record stamp) can move.
+export function updateReservation(state, id, values, today = new Date()) {
+  const reservations = state.reservations ?? [];
+  const current = reservations.find((reservation) => reservation.id === id);
+  if (!current) return state;
+
+  const problem = reservationError(values, today, { currentDate: current.arrivalDate });
+  if (problem) return state;
+
+  return {
+    ...state,
+    reservations: reservations.map((reservation) =>
+      reservation.id === id
+        ? {
+            ...reservation,
+            roomType: values.roomType,
+            arrivalDate: values.arrivalDate,
+            days: Number(values.days),
+            updatedAt: new Date().toISOString(),
+          }
+        : reservation,
+    ),
+  };
+}
+
+export function removeReservation(state, id) {
+  const reservations = state.reservations ?? [];
+  if (!reservations.some((reservation) => reservation.id === id)) return state;
+
+  return {
+    ...state,
+    reservations: reservations.filter((reservation) => reservation.id !== id),
+  };
 }
 
 // randomUUID needs a secure context. Opening the app over plain HTTP on a LAN

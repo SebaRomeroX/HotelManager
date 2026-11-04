@@ -1,9 +1,11 @@
-import { update } from "../store.js";
+import { getState, update } from "../store.js";
 import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS } from "../rooms.js";
 import {
   RESERVATION_NAME_MAX,
   addReservation,
+  removeReservation,
   reservationError,
+  updateReservation,
 } from "../reservations.js";
 
 const dialog = document.createElement("dialog");
@@ -12,7 +14,7 @@ dialog.setAttribute("aria-labelledby", "reservation-dialog-title");
 
 dialog.innerHTML = `
   <header class="dialog__header">
-    <h2 class="dialog__title" id="reservation-dialog-title">New reservation</h2>
+    <h2 class="dialog__title" id="reservation-dialog-title" data-title>New reservation</h2>
     <button class="btn" type="button" data-close>Close</button>
   </header>
 
@@ -58,7 +60,7 @@ dialog.innerHTML = `
         >
       </div>
 
-      <div class="field">
+      <div class="field" data-name-field>
         <label class="field__label" for="reservation-name">Host name</label>
         <input
           class="input"
@@ -71,22 +73,38 @@ dialog.innerHTML = `
         >
       </div>
 
+      <p class="hint" data-host hidden></p>
+
       <p class="error" id="reservation-error" role="alert" hidden></p>
 
       <button class="btn btn--primary btn--block" type="submit" disabled>
         Add reservation
       </button>
+
+      <div class="form__actions" data-edit-actions hidden>
+        <button class="btn" type="button" data-edit-cancel>Cancel</button>
+        <button class="btn btn--danger" type="button" data-cancel-res>Cancel reservation</button>
+      </div>
     </form>
   </div>
 `;
 
 const form = dialog.querySelector("form");
+const title = dialog.querySelector("[data-title]");
+const nameField = dialog.querySelector("[data-name-field]");
 const nameInput = dialog.querySelector("#reservation-name");
 const dateInput = dialog.querySelector("#reservation-date");
 const daysInput = dialog.querySelector("#reservation-days");
 const errorText = dialog.querySelector("#reservation-error");
 const addButton = dialog.querySelector('button[type="submit"]');
+const actions = dialog.querySelector("[data-edit-actions]");
+const editCancelButton = dialog.querySelector("[data-edit-cancel]");
+const cancelResButton = dialog.querySelector("[data-cancel-res]");
+const hostHint = dialog.querySelector("[data-host]");
 
+// Edit state is transient UI, so it stays here instead of going in the store.
+let editingId = null;
+let confirmingCancel = false;
 // Which control owns the visible error, so typing there can clear it.
 let errorField = null;
 
@@ -116,6 +134,36 @@ function clearErrorFor(target) {
   if (!errorText.hidden && target.name === errorField) setError(null);
 }
 
+function resetCancelConfirm() {
+  confirmingCancel = false;
+  cancelResButton.textContent = "Cancel reservation";
+  cancelResButton.classList.remove("btn--armed");
+}
+
+function syncMode() {
+  const editing = editingId !== null;
+
+  title.textContent = editing ? "Edit reservation" : "New reservation";
+  addButton.textContent = editing ? "Save changes" : "Add reservation";
+  actions.hidden = !editing;
+  // The name belongs to the booking for good: show it as text, not a field.
+  nameField.hidden = editing;
+  hostHint.hidden = !editing;
+
+  if (editing) {
+    const reservation = findEditing();
+    hostHint.textContent = reservation ? `Host: ${reservation.hostName}` : "";
+  }
+
+  resetCancelConfirm();
+}
+
+function findEditing() {
+  return (getState().reservations ?? []).find(
+    (reservation) => reservation.id === editingId,
+  );
+}
+
 function todayISO() {
   const now = new Date();
   const month = String(now.getMonth() + 1).padStart(2, "0");
@@ -134,6 +182,33 @@ function resetForm() {
   dateInput.value = today;
 
   addButton.disabled = true;
+  syncMode();
+}
+
+function prefill() {
+  const reservation = findEditing();
+  if (!reservation) return;
+
+  const radio = form.querySelector(
+    `input[name="roomType"][value="${reservation.roomType}"]`,
+  );
+  if (radio) radio.checked = true;
+
+  // May sit in the past — an arrived booking keeps its date through an edit.
+  dateInput.value = reservation.arrivalDate;
+  daysInput.value = String(reservation.days);
+  addButton.disabled = false;
+}
+
+function readValues() {
+  return {
+    // Edit mode sends the stored name: the hint is not a field, so what the
+    // validator sees is what is already on the record.
+    hostName: editingId === null ? nameInput.value : findEditing()?.hostName ?? "",
+    roomType: form.elements.roomType.value,
+    arrivalDate: dateInput.value,
+    days: daysInput.value,
+  };
 }
 
 form.addEventListener("change", (event) => {
@@ -146,14 +221,12 @@ form.addEventListener("input", (event) => clearErrorFor(event.target));
 form.addEventListener("submit", (event) => {
   event.preventDefault();
 
-  const values = {
-    hostName: nameInput.value,
-    roomType: form.elements.roomType.value,
-    arrivalDate: dateInput.value,
-    days: daysInput.value,
-  };
+  const values = readValues();
+  const problem = reservationError(values, undefined, {
+    currentDate:
+      editingId === null ? undefined : findEditing()?.arrivalDate,
+  });
 
-  const problem = reservationError(values);
   if (problem) {
     setError(problem);
     form.elements[problem.field]?.focus();
@@ -161,7 +234,32 @@ form.addEventListener("submit", (event) => {
   }
 
   setError(null);
-  update((state) => addReservation(state, values));
+
+  if (editingId === null) {
+    update((state) => addReservation(state, values));
+  } else {
+    const id = editingId;
+    update((state) => updateReservation(state, id, values));
+  }
+
+  dialog.close();
+});
+
+editCancelButton.addEventListener("click", () => dialog.close());
+
+cancelResButton.addEventListener("click", () => {
+  if (editingId === null) return;
+
+  if (!confirmingCancel) {
+    confirmingCancel = true;
+    cancelResButton.textContent = "Confirm cancel";
+    cancelResButton.classList.add("btn--armed");
+    cancelResButton.focus();
+    return;
+  }
+
+  const id = editingId;
+  update((state) => removeReservation(state, id));
   dialog.close();
 });
 
@@ -173,17 +271,41 @@ dialog.addEventListener("click", (event) => {
 });
 
 dialog.addEventListener("close", () => {
-  // Saving repaints the view, so the button that opened this sheet is a new
-  // element by now and the browser's own focus restoration finds nothing.
-  document.querySelector("[data-new-reservation]")?.focus();
+  const returnTo = editingId;
+  editingId = null;
   resetForm();
+
+  // Saving repaints the list, so both the opener and the rows are new
+  // elements by now and the browser's own restoration finds nothing. After a
+  // cancel the row is gone entirely — fall back to the screen's button.
+  const row =
+    returnTo && document.querySelector(`.res-row[data-id="${returnTo}"]`);
+  (row ?? document.querySelector("[data-new-reservation]"))?.focus();
 });
 
-export function openReservationDialog() {
+export function openReservationDialog(reservationId = null) {
   if (dialog.open) return;
+
+  editingId = reservationId;
+  if (editingId !== null && !findEditing()) {
+    editingId = null;
+    return;
+  }
+
   resetForm();
+  if (editingId !== null) prefill();
+
   dialog.showModal();
-  nameInput.focus();
+  if (editingId !== null) {
+    // First checked radio, else the first one: a comma selector alone would
+    // return the topmost option regardless of which one is checked.
+    const typeRadio =
+      form.querySelector('input[name="roomType"]:checked') ??
+      form.querySelector('input[name="roomType"]');
+    typeRadio?.focus();
+  } else {
+    nameInput.focus();
+  }
 }
 
 document.body.append(dialog);

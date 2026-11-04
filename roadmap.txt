@@ -237,6 +237,23 @@ Newest entries at the bottom.
             to the New reservation button by hand — the opener element the
             browser would restore no longer exists by then.
 
+2026-11-03  Tapping a reservation opens the same sheet in edit mode: the
+            title and submit swap, the host name becomes a static "Host: …"
+            hint, and a two-step Cancel reservation button (armed on first
+            tap) removes the booking. Rows are now real buttons so they are
+            keyboard-focusable like room cards.
+            why: the host name is fixed at creation — who the booking belongs
+            to is not desk-editable, so the field is replaced by text rather
+            than left as a disabled input, which would still look like a
+            field. A booking whose date has already passed keeps that date
+            through an edit (only a changed date must be a night to come) —
+            otherwise arriving would lock the record behind a validation
+            error. updateReservation never writes hostName even if passed
+            one, and unknown ids return the state unchanged, so a stale tap
+            cannot corrupt anything. Focus returns to the edited row's
+            button, falling back to New reservation after a cancel removes
+            it — the repaint detached the opener the browser would restore.
+
 
 ================================================================
 4. TODO TASKS

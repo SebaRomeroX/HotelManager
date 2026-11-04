@@ -41,7 +41,23 @@ function list(reservations) {
 
 function row(reservation) {
   const item = document.createElement("li");
-  item.className = "res-row";
+
+  const checkout = checkoutDate(reservation.arrivalDate, reservation.days);
+  const range = `${formatDate(reservation.arrivalDate)} → ${formatDate(checkout)}`;
+  const days = `${reservation.days} ${reservation.days === 1 ? "day" : "days"}`;
+  const dayLabel = relativeDayLabel(reservation.arrivalDate);
+
+  // Headings are not valid inside a button, so the name is a span; the
+  // accessible name is set explicitly below — same pattern as room cards.
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "res-row";
+  button.dataset.id = reservation.id;
+  button.setAttribute(
+    "aria-label",
+    `${reservation.hostName}, ${typeLabel(reservation.roomType)}, ${range}, ${days}, ${dayLabel} — edit`,
+  );
+  button.addEventListener("click", () => openReservationDialog(reservation.id));
 
   const main = document.createElement("span");
   main.className = "res-row__main";
@@ -50,21 +66,18 @@ function row(reservation) {
   name.className = "res-row__name";
   name.textContent = reservation.hostName;
 
-  const checkout = checkoutDate(reservation.arrivalDate, reservation.days);
   const meta = document.createElement("span");
   meta.className = "res-row__meta";
-  meta.textContent =
-    `${typeLabel(reservation.roomType)} · ${formatDate(reservation.arrivalDate)}` +
-    ` → ${formatDate(checkout)} · ${reservation.days} ` +
-    `${reservation.days === 1 ? "day" : "days"}`;
+  meta.textContent = `${typeLabel(reservation.roomType)} · ${range} · ${days}`;
 
   main.append(name, meta);
 
   const day = document.createElement("span");
   day.className = "res-row__day";
-  day.textContent = relativeDayLabel(reservation.arrivalDate);
+  day.textContent = dayLabel;
 
-  item.append(main, day);
+  button.append(main, day);
+  item.append(button);
   return item;
 }
 
