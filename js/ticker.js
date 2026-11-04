@@ -4,12 +4,17 @@ import {
   nextCleaningStep,
   reconcileExpiries,
 } from "./rooms.js";
+import {
+  nextReservationBoundary,
+  reconcileReservations,
+} from "./reservations.js";
 
 const listeners = new Set();
 
 function reconcile() {
   const current = getState();
-  const next = reconcileExpiries(current);
+  // Both reconciles in one mutator: a state change persists and notifies once.
+  const next = reconcileReservations(reconcileExpiries(current));
   if (next !== current) update(() => next);
 }
 
@@ -49,7 +54,13 @@ function armNext() {
   const now = new Date();
   const ms = Math.max(
     0,
-    Math.min(msToWallBoundary(), msToNextCleaningStep(now)),
+    Math.min(
+      msToWallBoundary(),
+      msToNextCleaningStep(now),
+      // Midnight rolls the sections and opens new arrival windows; a cutoff
+      // expires a no-show. Both repaint exactly, not up to a minute late.
+      nextReservationBoundary(getState(), now) - now.getTime(),
+    ),
   );
 
   setTimeout(() => {

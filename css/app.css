@@ -389,6 +389,13 @@ p {
   --state: var(--state-oos);
 }
 
+/* The held marker paints over the room's real state colour: underneath, the
+   card is still the vacant room the reservation is holding. */
+.card--arriving {
+  --state: var(--accent);
+  border-color: var(--accent);
+}
+
 .card {
   display: grid;
   gap: var(--space-1);
@@ -509,6 +516,16 @@ p {
 .hint {
   color: var(--text-muted);
   font-size: var(--text-sm);
+}
+
+.checkin {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* Author display beats the UA rule behind the hidden attribute. */
+.checkin[hidden] {
+  display: none;
 }
 
 .error {

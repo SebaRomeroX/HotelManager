@@ -1,4 +1,12 @@
-import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS, typeLabel } from "./rooms.js";
+import {
+  NIGHT_OF_HOUR,
+  ROOM_TYPES,
+  STAY_MAX_DAYS,
+  STAY_MIN_DAYS,
+  setRoomState,
+  sortRooms,
+  typeLabel,
+} from "./rooms.js";
 
 export const RESERVATION_NAME_MAX = 80;
 
@@ -61,7 +69,13 @@ export function formatDate(value) {
 // names a form control; null when valid. Shared by the dialog (to show and
 // focus the error) and addReservation/updateReservation (to refuse the write),
 // so the two can never disagree about what is acceptable.
-export function reservationError(values, today = new Date()) {
+//
+// currentDate is the arrival date already on the record. A booking inside its
+// no-show window can straddle midnight — yesterday's reservation is still
+// check-in-able until 04:00 — so an edit that does not move its date must not
+// trip the past rule; any date the user does change must still be a night to
+// come.
+export function reservationError(values, today = new Date(), { currentDate } = {}) {
   const hostName = (values.hostName ?? "").trim();
   if (!hostName) return { field: "hostName", message: "Give the host a name." };
   if (hostName.length > RESERVATION_NAME_MAX) {
@@ -79,9 +93,9 @@ export function reservationError(values, today = new Date()) {
 
   // A reservation books a night to come; stays that already happened are
   // recorded by the room itself, not by a backfilled booking. Past bookings
-  // are not editable at all (see isPastReservation), so no edit path can ever
-  // trip this rule with an unchanged date.
-  if (arrival < startOfDay(today)) {
+  // are not editable at all (see isReadOnlyReservation), so only a straddling
+  // window's unchanged date can reach this rule.
+  if (arrival < startOfDay(today) && values.arrivalDate !== currentDate) {
     return { field: "arrivalDate", message: "The arrival date can't be in the past." };
   }
 
@@ -96,30 +110,73 @@ export function reservationError(values, today = new Date()) {
   return null;
 }
 
-// Past means the arrival date has passed — the same line the sections draw,
-// so a row sitting in Past can never be edited from under it. An unparseable
-// date counts as past too: a corrupt entry lands in the read-only section
-// where it can still be cancelled, instead of sitting in Incoming forever.
-export function isPastReservation(reservation, today = new Date()) {
+// When a booking for arrivalDate stops being a no-show candidate: 04:00 the
+// morning after (NIGHT_OF_HOUR), so a check-in recorded in the small hours —
+// exactly the arrivals the night-of rule exists for — still finds its room
+// held. Unparseable dates have no window: they never qualify as arriving and
+// never auto-cancel, leaving manual cancel as their way out.
+function windowEnd(arrivalDate) {
+  const end = parseDate(arrivalDate);
+  if (!end) return null;
+
+  end.setDate(end.getDate() + 1);
+  end.setHours(NIGHT_OF_HOUR, 0, 0, 0);
+  return end;
+}
+
+// True while the booking is still waiting for its host: from 00:00 on its
+// arrival date until 04:00 the next morning. Checked-in bookings never
+// qualify — their room already took the stay.
+export function isArrivingNow(reservation, now = new Date()) {
+  if (reservation.checkedInAt) return false;
+
   const arrival = parseDate(reservation.arrivalDate);
-  return !arrival || arrival < startOfDay(today);
+  if (!arrival) return false;
+
+  const end = windowEnd(reservation.arrivalDate);
+  return now >= arrival && now < end;
+}
+
+// The one past line — consumed by sorting, grouping, the edit lock and the
+// read-only sheet, so they can never disagree:
+//   checked-in  → the calendar day it landed on; it leaves Today the day after
+//   pending     → its arrival window (00:00 D … 04:00 D+1); a straddling
+//                 booking is NOT past while that window holds
+//   unparseable → past, landing in the read-only section where it can still
+//                 be cancelled instead of sitting in Incoming forever
+export function isPastReservation(reservation, now = new Date()) {
+  const arrival = parseDate(reservation.arrivalDate);
+  if (!arrival) return true;
+
+  if (reservation.checkedInAt) return arrival < startOfDay(now);
+
+  const end = windowEnd(reservation.arrivalDate);
+  return now >= end;
+}
+
+// Checked-in stays are read-only: their duration lives on the room now and
+// cannot be propagated back from here (see the roadmap TODO).
+export function isReadOnlyReservation(reservation, now = new Date()) {
+  return Boolean(reservation.checkedInAt) || isPastReservation(reservation, now);
 }
 
 // Upcoming first (soonest arrival), then the past with the most recent first —
 // the front desk reads what is next without losing what just left. Equal dates
 // fall through to the host name so the order never jitters between renders.
+// "Past" is isPastReservation, so a booking inside its no-show window sorts
+// with the upcoming ones — tomorrow's sections and this order cannot split.
 export function sortReservations(reservations, today = new Date()) {
-  const todayStart = startOfDay(today);
-
   return [...reservations].sort((a, b) => {
-    const aDate = parseDate(a.arrivalDate) ?? new Date(0);
-    const bDate = parseDate(b.arrivalDate) ?? new Date(0);
-
-    const aPast = aDate < todayStart;
-    const bPast = bDate < todayStart;
+    const aPast = isPastReservation(a, today);
+    const bPast = isPastReservation(b, today);
     if (aPast !== bPast) return aPast ? 1 : -1;
 
+    // Unknown/garbage dates rank as oldest rather than newest: -1 would do
+    // the opposite in the past half, so parseDate falls back to the epoch.
+    const aDate = parseDate(a.arrivalDate) ?? new Date(0);
+    const bDate = parseDate(b.arrivalDate) ?? new Date(0);
     const direction = aPast ? -1 : 1;
+
     return (
       (aDate.getTime() - bDate.getTime()) * direction ||
       a.hostName.localeCompare(b.hostName, undefined, { sensitivity: "base" })
@@ -166,9 +223,12 @@ export function groupReservations(reservations, today = new Date()) {
       continue;
     }
 
-    // Not past, so the date parsed — compare it against today's midnight.
+    // Not past, so the date parsed. Arrival at or before today's midnight
+    // means today's own booking or one straddling the night inside its
+    // no-show window — both still belong to Today, because both can still
+    // be checked in right now.
     const arrival = parseDate(reservation.arrivalDate);
-    if (arrival.getTime() === todayStart.getTime()) {
+    if (arrival.getTime() <= todayStart.getTime()) {
       groups.today.push(reservation);
     } else {
       groups.incoming.push(reservation);
@@ -197,14 +257,16 @@ export function addReservation(state, values, today = new Date()) {
 
 // The host name is deliberately absent: who the booking belongs to is fixed
 // at creation, so only the stay details (and the record stamp) can move.
-// A past booking's stay details do not move either — it is history.
+// Read-only records — past and checked-in — do not move at all.
 export function updateReservation(state, id, values, today = new Date()) {
   const reservations = state.reservations ?? [];
   const current = reservations.find((reservation) => reservation.id === id);
   if (!current) return state;
-  if (isPastReservation(current, today)) return state;
+  if (isReadOnlyReservation(current, today)) return state;
 
-  const problem = reservationError(values, today);
+  const problem = reservationError(values, today, {
+    currentDate: current.arrivalDate,
+  });
   if (problem) return state;
 
   return {
@@ -231,6 +293,120 @@ export function removeReservation(state, id) {
     ...state,
     reservations: reservations.filter((reservation) => reservation.id !== id),
   };
+}
+
+// Which free room each arriving booking holds, derived fresh on every render:
+// nothing is stored, so occupying, OOS-ing or cleaning the held room simply
+// moves the marker to the next free match with no write and no drift. Order
+// matters: the straddling no-show about to expire gets first pick, then the
+// stable list order the sections already show; rooms follow sortRooms.
+export function arrivingAssignment(state, now = new Date()) {
+  const assignment = new Map();
+
+  const arriving = (state.reservations ?? [])
+    .filter((reservation) => isArrivingNow(reservation, now))
+    .sort((a, b) => {
+      const aDate = parseDate(a.arrivalDate).getTime();
+      const bDate = parseDate(b.arrivalDate).getTime();
+      return (
+        aDate - bDate ||
+        a.hostName.localeCompare(b.hostName, undefined, { sensitivity: "base" })
+      );
+    });
+
+  const free = sortRooms(state.rooms ?? []).filter((room) => room.state === "vacant");
+  const taken = new Set();
+
+  for (const reservation of arriving) {
+    const room = free.find(
+      (candidate) =>
+        candidate.type === reservation.roomType && !taken.has(candidate.id),
+    );
+    if (!room) continue;
+
+    taken.add(room.id);
+    assignment.set(room.id, reservation);
+  }
+
+  return assignment;
+}
+
+// One state transition: the room takes the stay timer exactly as a manual
+// set-occupied would — so the 10:00 boundary, the countdown label and the
+// night-of rule all apply from now — and the reservation is stamped
+// checked-in. Refuses (same reference) unless the booking is inside its
+// arrival window and a free matching room is actually held for it.
+export function checkInReservation(state, id, now = new Date()) {
+  const reservation = (state.reservations ?? []).find(
+    (candidate) => candidate.id === id,
+  );
+  if (!reservation || !isArrivingNow(reservation, now)) return state;
+
+  let roomId = null;
+  for (const [heldRoomId, held] of arrivingAssignment(state, now)) {
+    if (held.id === id) {
+      roomId = heldRoomId;
+      break;
+    }
+  }
+  if (roomId === null) return state;
+
+  const withStay = setRoomState(state, roomId, "occupied", {
+    days: reservation.days,
+    now,
+  });
+  // setRoomState refuses invalid day counts; never stamp a check-in the room
+  // did not take.
+  if (withStay === state) return state;
+
+  return {
+    ...withStay,
+    reservations: withStay.reservations.map((candidate) =>
+      candidate.id === id
+        ? { ...candidate, checkedInAt: now.toISOString() }
+        : candidate,
+    ),
+  };
+}
+
+function isNoShow(reservation, now) {
+  if (reservation.checkedInAt) return false;
+
+  const end = windowEnd(reservation.arrivalDate);
+  return end !== null && now >= end;
+}
+
+// Drop bookings whose arrival window closed unvalidated. Same contract as
+// reconcileExpiries: identical reference when nothing expired.
+export function reconcileReservations(state, now = new Date()) {
+  const reservations = state.reservations ?? [];
+  const kept = reservations.filter(
+    (reservation) => !isNoShow(reservation, now),
+  );
+  if (kept.length === reservations.length) return state;
+
+  return { ...state, reservations: kept };
+}
+
+// Earliest moment reservations change on their own: midnight rolls the
+// sections and starts new arrival windows, a cutoff expires a no-show.
+// Past cutoffs are skipped — reconcile drops those before this ever matters.
+export function nextReservationBoundary(state, now = new Date()) {
+  const midnight = startOfDay(now);
+  midnight.setDate(midnight.getDate() + 1);
+  let best = midnight.getTime();
+
+  for (const reservation of state.reservations ?? []) {
+    if (reservation.checkedInAt) continue;
+
+    const end = windowEnd(reservation.arrivalDate);
+    if (!end) continue;
+
+    const at = end.getTime();
+    if (at > now.getTime() && at < best) best = at;
+  }
+
+  return best;
 }
 
 // randomUUID needs a secure context. Opening the app over plain HTTP on a LAN

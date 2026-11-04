@@ -5,6 +5,7 @@ import {
   STAY_MIN_DAYS,
   setRoomState,
 } from "../rooms.js";
+import { arrivingAssignment } from "../reservations.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -18,6 +19,7 @@ dialog.innerHTML = `
 
   <div class="dialog__body">
     <p class="hint" data-room></p>
+    <p class="hint" data-arriving hidden></p>
 
     <div class="state-list">
       ${ROOM_STATES.map(
@@ -61,6 +63,7 @@ dialog.innerHTML = `
 `;
 
 const roomLabel = dialog.querySelector("[data-room]");
+const arrivingHint = dialog.querySelector("[data-arriving]");
 const rows = [...dialog.querySelectorAll(".state-row")];
 const daysForm = dialog.querySelector("[data-days]");
 const daysInput = dialog.querySelector("#stay-days");
@@ -81,6 +84,12 @@ function render() {
   }
 
   roomLabel.textContent = room.name;
+
+  // The hold is derived, so it appears and disappears with the assignment —
+  // including under this sheet if the store changes while it is open.
+  const arriving = arrivingAssignment(getState()).get(roomId);
+  arrivingHint.hidden = !arriving;
+  if (arriving) arrivingHint.textContent = `${arriving.hostName} arrives today`;
 
   for (const row of rows) {
     if (row.dataset.value === room.state) {

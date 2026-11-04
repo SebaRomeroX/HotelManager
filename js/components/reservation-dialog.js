@@ -1,9 +1,11 @@
 import { getState, update } from "../store.js";
-import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS } from "../rooms.js";
+import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS, typeLabel } from "../rooms.js";
 import {
   RESERVATION_NAME_MAX,
   addReservation,
-  isPastReservation,
+  checkInReservation,
+  isArrivingNow,
+  isReadOnlyReservation,
   removeReservation,
   reservationError,
   reservationMeta,
@@ -22,6 +24,13 @@ dialog.innerHTML = `
 
   <div class="dialog__body">
     <form class="form" novalidate>
+      <div class="checkin" data-checkin hidden>
+        <button class="btn btn--primary btn--block" type="button" data-checkin-btn>
+          Check in
+        </button>
+        <p class="error" data-checkin-error role="alert" hidden></p>
+      </div>
+
       <fieldset class="field field--group">
         <legend class="field__label">Room type</legend>
         <div class="segmented">
@@ -107,6 +116,9 @@ const cancelResButton = dialog.querySelector("[data-cancel-res]");
 const hostHint = dialog.querySelector("[data-host]");
 const metaHint = dialog.querySelector("[data-meta]");
 const typeField = dialog.querySelector("fieldset");
+const checkinBlock = dialog.querySelector("[data-checkin]");
+const checkinButton = dialog.querySelector("[data-checkin-btn]");
+const checkinError = dialog.querySelector("[data-checkin-error]");
 
 // Edit state is transient UI, so it stays here instead of going in the store.
 let editingId = null;
@@ -146,21 +158,27 @@ function resetCancelConfirm() {
   cancelResButton.classList.remove("btn--armed");
 }
 
-// A past booking is history: everything shows as text and only the two-step
-// cancel stays live.
+// Checked-in and past bookings are history: everything shows as text and only
+// the two-step cancel stays live.
 function readOnly() {
   const reservation = findEditing();
-  return reservation !== undefined && isPastReservation(reservation);
+  return reservation !== undefined && isReadOnlyReservation(reservation);
 }
 
 function syncMode() {
   const editing = editingId !== null;
   const readonly = readOnly();
+  const reservation = editing ? findEditing() : undefined;
+  // Visible only while the host can still arrive: inside the window, not yet
+  // checked in — tomorrow's bookings get no button until their day starts.
+  const arriving = reservation !== undefined && isArrivingNow(reservation);
 
   title.textContent = !editing
     ? "New reservation"
     : readonly
-      ? "Past reservation"
+      ? reservation?.checkedInAt
+        ? "Checked-in reservation"
+        : "Past reservation"
       : "Edit reservation";
   addButton.textContent = editing ? "Save changes" : "Add reservation";
   actions.hidden = !editing;
@@ -170,6 +188,9 @@ function syncMode() {
   nameField.hidden = editing;
   hostHint.hidden = !editing;
   metaHint.hidden = !readonly;
+  checkinBlock.hidden = !arriving;
+  checkinError.hidden = true;
+  checkinError.textContent = "";
 
   // Read-only hides the whole form: static lines instead of inputs.
   typeField.hidden = readonly;
@@ -178,7 +199,6 @@ function syncMode() {
   addButton.hidden = readonly;
 
   if (editing) {
-    const reservation = findEditing();
     hostHint.textContent = reservation ? `Host: ${reservation.hostName}` : "";
     if (readonly && reservation) metaHint.textContent = reservationMeta(reservation);
   }
@@ -253,7 +273,11 @@ form.addEventListener("submit", (event) => {
   if (readOnly()) return;
 
   const values = readValues();
-  const problem = reservationError(values);
+  const problem = reservationError(values, undefined, {
+    // An unchanged date may sit inside the straddling no-show window.
+    currentDate:
+      editingId === null ? undefined : findEditing()?.arrivalDate,
+  });
 
   if (problem) {
     setError(problem);
@@ -274,6 +298,32 @@ form.addEventListener("submit", (event) => {
 });
 
 editCancelButton.addEventListener("click", () => dialog.close());
+
+checkinButton.addEventListener("click", () => {
+  const id = editingId;
+  if (id === null) return;
+
+  const reservation = findEditing();
+  if (!reservation || !isArrivingNow(reservation)) {
+    // The 04:00 cutoff passed with the sheet open.
+    checkinError.textContent = "The arrival window has passed.";
+    checkinError.hidden = false;
+    return;
+  }
+
+  const before = getState();
+  const after = checkInReservation(before, id);
+
+  if (after === before) {
+    // In its window but nothing held: no free room of that type right now.
+    checkinError.textContent = `No free ${typeLabel(reservation.roomType)} room right now.`;
+    checkinError.hidden = false;
+    return;
+  }
+
+  update(() => after);
+  dialog.close();
+});
 
 cancelResButton.addEventListener("click", () => {
   if (editingId === null) return;
@@ -328,12 +378,19 @@ export function openReservationDialog(reservationId = null) {
   if (editingId === null) {
     nameInput.focus();
   } else if (!readonly) {
-    // First checked radio, else the first one: a comma selector alone would
-    // return the topmost option regardless of which one is checked.
-    const typeRadio =
-      form.querySelector('input[name="roomType"]:checked') ??
-      form.querySelector('input[name="roomType"]');
-    typeRadio?.focus();
+    const reservation = findEditing();
+    if (reservation && isArrivingNow(reservation)) {
+      // The host is standing at the desk: the sheet's first action is the one
+      // they came for.
+      checkinButton.focus();
+    } else {
+      // First checked radio, else the first one: a comma selector alone would
+      // return the topmost option regardless of which one is checked.
+      const typeRadio =
+        form.querySelector('input[name="roomType"]:checked') ??
+        form.querySelector('input[name="roomType"]');
+      typeRadio?.focus();
+    }
   }
   // Read-only leaves the browser's own focus on the header Close button.
 }

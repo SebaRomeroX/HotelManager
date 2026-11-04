@@ -273,13 +273,39 @@ Newest entries at the bottom.
             midnight cannot rewrite history — while delete stays allowed,
             because removing a wrong record is not editing one.
 
+2026-11-04  Today's reservations now hold a free room automatically: the rooms
+            screen paints OCCUPIED - ARRIVING (accent border) on a vacant
+            room of the booking's exact type, derived fresh on every render —
+            nothing stored, so occupying or OOS-ing the held room moves the
+            marker to the next free match by itself. Tapping the reservation
+            offers Check in: one update takes the room into a real occupied
+            stay (stayDays/stayStartedAt via setRoomState) and stamps
+            checkedInAt on the booking. An unvalidated booking auto-cancels
+            at 04:00 the next morning — NIGHT_OF_HOUR — and is removed like
+            any manual cancel.
+            why: 04:00 rather than midnight because that is exactly the
+            night-of line the 01:10 arrivals need — a booking for the 5th
+            stays check-in-able into the small hours of the 6th, so
+            isPastReservation now means "arrival window closed" for pendings
+            (00:00 D … 04:00 D+1) instead of "date < today"; sorting,
+            grouping, the edit lock and the read-only sheet all read that one
+            function, which is what keeps sections and lock in step — and
+            restores the unchanged-date pass in reservationError, since a
+            straddling booking legitimately edits with yesterday's date.
+            A check-in booking is read-only afterwards: its duration lives
+            on the room now and there is no propagation back yet (TODO). The
+            ticker arms on midnight and on each cutoff alongside 10:00 and
+            cleaning steps, so sections roll and no-shows expire exactly on
+            time instead of at the next stray repaint.
+
 
 ================================================================
 4. TODO TASKS
 ================================================================
 
 - Deleting a room must first check that no reservation references it
-- Check-in sets occupied and check-out sets needs cleaning once reservations exist
+- Check-out: free an occupied stay into needs cleaning from its checked-in reservation (check-in now exists via reservation validation)
+- Propagate duration edits back to a checked-in reservation's room stay (checked-in reservations are read-only until then)
 - Make the 10:00 boundary, the night-of cutoff and the cleaning durations configurable once a settings screen exists
 
 
