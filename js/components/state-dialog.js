@@ -5,7 +5,7 @@ import {
   STAY_MIN_DAYS,
   setRoomState,
 } from "../rooms.js";
-import { arrivingAssignment } from "../reservations.js";
+import { arrivingAssignment, formatDate, occupancyConflict } from "../reservations.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -157,6 +157,19 @@ daysForm.addEventListener("submit", (event) => {
   const days = Number(daysInput.value);
   if (!Number.isInteger(days) || days < STAY_MIN_DAYS || days > STAY_MAX_DAYS) {
     daysError.textContent = `Enter a number of days between ${STAY_MIN_DAYS} and ${STAY_MAX_DAYS}.`;
+    daysError.hidden = false;
+    daysInput.focus();
+    daysInput.select();
+    return;
+  }
+
+  // The stay must not eat a room some booking is counting on. Same-reference
+  // refusal in the domain; here it is the message.
+  const conflict = occupancyConflict(getState(), roomId, days);
+  if (conflict) {
+    daysError.textContent =
+      `That stay overlaps ${conflict.hostName}'s arrival on ` +
+      `${formatDate(conflict.arrivalDate)}.`;
     daysError.hidden = false;
     daysInput.focus();
     daysInput.select();

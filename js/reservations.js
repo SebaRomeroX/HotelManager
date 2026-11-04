@@ -1,10 +1,12 @@
 import {
+  DAY_BOUNDARY_HOUR,
   NIGHT_OF_HOUR,
   ROOM_TYPES,
   STAY_MAX_DAYS,
   STAY_MIN_DAYS,
   setRoomState,
   sortRooms,
+  stayExpiry,
   typeLabel,
 } from "./rooms.js";
 
@@ -240,6 +242,7 @@ export function groupReservations(reservations, today = new Date()) {
 
 export function addReservation(state, values, today = new Date()) {
   if (reservationError(values, today)) return state;
+  if (reservationAvailabilityError(state, values)) return state;
 
   const reservation = {
     id: newId(),
@@ -268,6 +271,7 @@ export function updateReservation(state, id, values, today = new Date()) {
     currentDate: current.arrivalDate,
   });
   if (problem) return state;
+  if (reservationAvailabilityError(state, values, { current })) return state;
 
   return {
     ...state,
@@ -292,6 +296,130 @@ export function removeReservation(state, id) {
   return {
     ...state,
     reservations: reservations.filter((reservation) => reservation.id !== id),
+  };
+}
+
+// Can this room serve a booking arriving on arrivalDate? The one availability
+// line, shared by every guard: not out of order, and a live stay must end by
+// the arrival morning's checkout line — 10:00 on D — so a back-to-back stay
+// (A out at 10:00, B in the same day) still counts as free. An occupied room
+// without a timer never frees, so it never serves.
+function roomServes(room, arrivalDate) {
+  if (room.state === "oos") return false;
+
+  if (room.state === "occupied") {
+    if (!room.stayDays || !room.stayStartedAt) return false;
+
+    const line = parseDate(arrivalDate);
+    if (!line) return false;
+    line.setHours(DAY_BOUNDARY_HOUR, 0, 0, 0);
+    if (stayExpiry(room.stayStartedAt, room.stayDays) > line) return false;
+  }
+
+  return true;
+}
+
+function byArrival(a, b) {
+  return (
+    parseDate(a.arrivalDate).getTime() - parseDate(b.arrivalDate).getTime() ||
+    a.hostName.localeCompare(b.hostName, undefined, { sensitivity: "base" })
+  );
+}
+
+// The booking a manual set-occupied would strand, or null. Simulates X taking
+// the stay from now, then asks for every booking X can no longer serve whether
+// some other room still can:
+//   in-window bookings hold a VACANT room right now — that is what the
+//     OCCUPIED - ARRIVING marker is — so they are counted, not matched: one
+//     vacant room short and the last booking in line is the one named
+//   future bookings need a room whose stay ends by their 10:00 line
+// Greedy and per-booking, the same standard arrivingAssignment holds itself.
+// exceptId is the booking taking X right now (check-in): it is not left
+// behind by its own move.
+export function occupancyConflict(
+  state,
+  roomId,
+  days,
+  now = new Date(),
+  { exceptId = null } = {},
+) {
+  const rooms = state.rooms ?? [];
+  const room = rooms.find((candidate) => candidate.id === roomId);
+  if (!room) return null;
+
+  const count = Number(days);
+  if (!Number.isInteger(count) || count < STAY_MIN_DAYS || count > STAY_MAX_DAYS) {
+    return null; // setRoomState refuses these anyway
+  }
+
+  const expiry = stayExpiry(now.toISOString(), count);
+
+  const arrivals = [];
+  const futures = [];
+  for (const reservation of state.reservations ?? []) {
+    if (reservation.checkedInAt || reservation.id === exceptId) continue;
+    if (reservation.roomType !== room.type) continue;
+
+    if (isArrivingNow(reservation, now)) {
+      arrivals.push(reservation);
+    } else if (!isPastReservation(reservation, now)) {
+      futures.push(reservation);
+    }
+  }
+
+  if (arrivals.length > 0) {
+    const vacantLeft = rooms.filter(
+      (candidate) =>
+        candidate.id !== roomId &&
+        candidate.type === room.type &&
+        candidate.state === "vacant",
+    ).length;
+
+    if (arrivals.length > vacantLeft) {
+      arrivals.sort(byArrival);
+      return arrivals[arrivals.length - 1];
+    }
+  }
+
+  futures.sort(byArrival);
+  for (const reservation of futures) {
+    const line = parseDate(reservation.arrivalDate);
+    line.setHours(DAY_BOUNDARY_HOUR, 0, 0, 0);
+    if (expiry <= line) continue; // X frees up in time
+
+    const saved = rooms.some(
+      (candidate) =>
+        candidate.id !== roomId &&
+        candidate.type === room.type &&
+        roomServes(candidate, reservation.arrivalDate),
+    );
+    if (!saved) return reservation;
+  }
+
+  return null;
+}
+
+// The booking-side guard: refuse a reservation no room could serve. Only the
+// fields that decide availability — room type and arrival date — so an edit
+// that moves neither (a duration tweak) is never refused by it, and a record
+// that was already impossible before this guard existed can still be edited.
+export function reservationAvailabilityError(state, values, { current } = {}) {
+  if (
+    current &&
+    current.roomType === values.roomType &&
+    current.arrivalDate === values.arrivalDate
+  ) {
+    return null;
+  }
+
+  const servable = (state.rooms ?? []).some(
+    (room) => room.type === values.roomType && roomServes(room, values.arrivalDate),
+  );
+  if (servable) return null;
+
+  return {
+    field: "roomType",
+    message: `No ${typeLabel(values.roomType)} room is free on ${formatDate(values.arrivalDate)}.`,
   };
 }
 
@@ -350,6 +478,12 @@ export function checkInReservation(state, id, now = new Date()) {
     }
   }
   if (roomId === null) return state;
+
+  // The stay must not strand another booking — the same conflict the days
+  // form shows an error for; here it is a same-reference refusal.
+  if (occupancyConflict(state, roomId, reservation.days, now, { exceptId: id })) {
+    return state;
+  }
 
   const withStay = setRoomState(state, roomId, "occupied", {
     days: reservation.days,

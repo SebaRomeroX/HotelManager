@@ -3,10 +3,14 @@ import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS, typeLabel } from "../rooms.js
 import {
   RESERVATION_NAME_MAX,
   addReservation,
+  arrivingAssignment,
   checkInReservation,
+  formatDate,
   isArrivingNow,
   isReadOnlyReservation,
+  occupancyConflict,
   removeReservation,
+  reservationAvailabilityError,
   reservationError,
   reservationMeta,
   updateReservation,
@@ -126,6 +130,21 @@ let confirmingCancel = false;
 // Which control owns the visible error, so typing there can clear it.
 let errorField = null;
 
+// A radio group comes back from form.elements as a RadioNodeList — not an
+// element, so it has no setAttribute/focus of its own. Every roomType problem
+// now reaches here (the availability guard), so unwrap groups to their inputs.
+function controlsFor(name) {
+  const control = form.elements[name];
+  if (!control) return [];
+  return typeof control.setAttribute === "function" ? [control] : [...control];
+}
+
+function focusField(name) {
+  const [first, ...rest] = controlsFor(name);
+  if (!first) return;
+  (first.checked ? first : rest.find((input) => input.checked) ?? first).focus();
+}
+
 function setError(problem) {
   errorField = problem?.field ?? null;
 
@@ -142,9 +161,10 @@ function setError(problem) {
   errorText.textContent = problem.message;
   errorText.hidden = false;
 
-  const input = form.elements[problem.field];
-  input?.setAttribute("aria-invalid", "true");
-  input?.setAttribute("aria-describedby", "reservation-error");
+  for (const input of controlsFor(problem.field)) {
+    input.setAttribute("aria-invalid", "true");
+    input.setAttribute("aria-describedby", "reservation-error");
+  }
 }
 
 // Typing can clear a problem, so stale red must go the moment a field changes.
@@ -281,11 +301,22 @@ form.addEventListener("submit", (event) => {
 
   if (problem) {
     setError(problem);
-    form.elements[problem.field]?.focus();
+    focusField(problem.field);
     return;
   }
 
   setError(null);
+
+  // No room could serve this type/date — shown before the write, refused by
+  // the domain too, through the same function.
+  const availability = reservationAvailabilityError(getState(), values, {
+    current: editingId === null ? undefined : findEditing(),
+  });
+  if (availability) {
+    setError(availability);
+    focusField(availability.field);
+    return;
+  }
 
   if (editingId === null) {
     update((state) => addReservation(state, values));
@@ -312,10 +343,38 @@ checkinButton.addEventListener("click", () => {
   }
 
   const before = getState();
+
+  // Which room holds this booking, if any — the domain re-derives it, this is
+  // only to pick the right message when something is in the way.
+  const heldRoomId = [...arrivingAssignment(before)].find(
+    ([, held]) => held.id === id,
+  )?.[0];
+
+  if (heldRoomId === undefined) {
+    checkinError.textContent = `No free ${typeLabel(reservation.roomType)} room right now.`;
+    checkinError.hidden = false;
+    return;
+  }
+
+  const conflict = occupancyConflict(
+    before,
+    heldRoomId,
+    reservation.days,
+    new Date(),
+    { exceptId: id },
+  );
+  if (conflict) {
+    checkinError.textContent =
+      `That stay overlaps ${conflict.hostName}'s arrival on ` +
+      `${formatDate(conflict.arrivalDate)}.`;
+    checkinError.hidden = false;
+    return;
+  }
+
   const after = checkInReservation(before, id);
 
   if (after === before) {
-    // In its window but nothing held: no free room of that type right now.
+    // Belt: the domain refused for one of its own reasons.
     checkinError.textContent = `No free ${typeLabel(reservation.roomType)} room right now.`;
     checkinError.hidden = false;
     return;
