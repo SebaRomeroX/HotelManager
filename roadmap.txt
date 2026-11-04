@@ -219,6 +219,24 @@ Newest entries at the bottom.
             edited minutes ago revalidate — mixing a stale entry with fresh
             dependencies loses a feature silently, with no error anywhere.
 
+2026-11-03  Reservations: a New reservation button opens a modal form (room
+            type, arrival date, duration, host name) and the screen lists
+            bookings by proximity — upcoming soonest first, then the past with
+            the most recent first. New js/reservations.js domain module and
+            js/components/reservation-dialog.js; schema untouched because
+            state.reservations already existed.
+            why: a reservation books a night to come, so the date picker opens
+            on today and validation refuses earlier ones — backfilled history
+            belongs to the room itself, not to a booking. The checkout date is
+            derived from arrival + duration and never stored, so the two halves
+            of one range cannot drift apart (same rule as stay expiry). One
+            reservationError() shared by the dialog and addReservation keeps
+            the message the user reads and the write that gets refused from
+            ever disagreeing. The sheet closes on save so the new row is
+            visible immediately; saving repaints the view, so focus is restored
+            to the New reservation button by hand — the opener element the
+            browser would restore no longer exists by then.
+
 
 ================================================================
 4. TODO TASKS

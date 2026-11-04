@@ -501,6 +501,50 @@ p {
   font-size: var(--text-sm);
 }
 
+.res-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.res-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.res-row__main {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.res-row__name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.res-row__meta {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.res-row__day {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 @media (min-width: 720px) {
   .dialog {
     inset: 0;
