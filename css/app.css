@@ -610,3 +610,111 @@ p {
     border-radius: var(--radius);
   }
 }
+
+/* ===================== calendar ===================== */
+
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cal-nav__label {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: center;
+}
+
+.cal-nav__arrow {
+  min-width: var(--tap);
+  padding: 0;
+  font-size: var(--text-lg);
+}
+
+.cal-dow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-1);
+}
+
+.cal-cell {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  min-height: var(--tap);
+  padding: var(--space-1) 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.cal-cell:hover {
+  border-color: var(--text-muted);
+}
+
+.cal-cell--blank {
+  border-color: transparent;
+  background: transparent;
+  cursor: default;
+  pointer-events: none;
+}
+
+.cal-cell--today {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+
+.cal-cell--full .cal-cell__free {
+  color: var(--danger);
+}
+
+.cal-cell--past {
+  color: var(--text-muted);
+}
+
+/* A sold-out day in the past stays dimmed — red is for nights to come. */
+.cal-cell--past.cal-cell--full .cal-cell__free {
+  color: var(--text-muted);
+}
+
+.cal-cell__day {
+  font-size: var(--text-sm);
+}
+
+.cal-cell__free {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.avail-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.avail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  font-size: var(--text-sm);
+}

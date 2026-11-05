@@ -423,6 +423,73 @@ export function reservationAvailabilityError(state, values, { current } = {}) {
   };
 }
 
+// The nights a live stay occupies: from the calendar day it began (night-of
+// included) up to — not including — its checkout day, which frees the room for
+// that night. The end is exactly the booking guard's 10:00 line; the start
+// exists so a stay that began yesterday does not paint last week red, which
+// roomServes (written for arrivals of today or later) would. An occupied room
+// with no timer never frees, so it covers everything.
+function stayCoversNight(room, night) {
+  if (room.state !== "occupied") return false;
+  if (!room.stayDays || !room.stayStartedAt) return true;
+
+  const expiry = stayExpiry(room.stayStartedAt, room.stayDays);
+  // Invert expiry = arrivalDay + days at 10:00 — robust because it inverts
+  // whatever rule produced it, without re-deriving the night-of line here.
+  const start = new Date(expiry);
+  start.setDate(start.getDate() - Number(room.stayDays));
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(expiry);
+  end.setHours(0, 0, 0, 0);
+
+  return start <= night && night < end;
+}
+
+// A booking consumes the nights [arrival, arrival + days): checkout morning
+// frees the room for that night — the guest leaves at 10:00, the room can be
+// sold again.
+function occupiesNight(arrival, days, night) {
+  const end = new Date(arrival);
+  end.setDate(end.getDate() + Number(days));
+  return arrival <= night && night < end;
+}
+
+// How many rooms could still be sold for this date — the number every
+// calendar cell shows. Per type: rooms not out of order and not held by a
+// live stay, minus the nights not-checked-in bookings cover; clamped at 0 so
+// data written before the guards can never show -1. Checked-in records are
+// skipped: their room's live stay already accounts them.
+export function availabilityOn(state, isoDate) {
+  const night = parseDate(isoDate);
+  const rooms = state.rooms ?? [];
+  const reservations = state.reservations ?? [];
+
+  const byType = ROOM_TYPES.map(({ value }) => {
+    const owned = rooms.filter((room) => room.type === value);
+    if (!night || owned.length === 0) {
+      return { type: value, total: owned.length, free: 0 };
+    }
+
+    const sellable = owned.filter(
+      (room) => room.state !== "oos" && !stayCoversNight(room, night),
+    ).length;
+
+    const booked = reservations.filter((reservation) => {
+      if (reservation.checkedInAt || reservation.roomType !== value) return false;
+      const arrival = parseDate(reservation.arrivalDate);
+      return arrival !== null && occupiesNight(arrival, reservation.days, night);
+    }).length;
+
+    return { type: value, total: owned.length, free: Math.max(0, sellable - booked) };
+  });
+
+  return {
+    free: byType.reduce((sum, entry) => sum + entry.free, 0),
+    total: byType.reduce((sum, entry) => sum + entry.total, 0),
+    byType,
+  };
+}
+
 // Which free room each arriving booking holds, derived fresh on every render:
 // nothing is stored, so occupying, OOS-ing or cleaning the held room simply
 // moves the marker to the next free match with no write and no drift. Order

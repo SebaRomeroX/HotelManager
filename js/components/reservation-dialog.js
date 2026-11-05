@@ -420,7 +420,7 @@ dialog.addEventListener("close", () => {
   (row ?? document.querySelector("[data-new-reservation]"))?.focus();
 });
 
-export function openReservationDialog(reservationId = null) {
+export function openReservationDialog(reservationId = null, options = {}) {
   if (dialog.open) return;
 
   editingId = reservationId;
@@ -431,7 +431,16 @@ export function openReservationDialog(reservationId = null) {
 
   const readonly = readOnly();
   resetForm();
-  if (editingId !== null && !readonly) prefill();
+
+  // Calendar shortcut: start a booking for the night that was tapped. A past
+  // date would be refused by the validator anyway — min already says no.
+  if (editingId === null && options.arrivalDate) {
+    if (options.arrivalDate >= dateInput.min) {
+      dateInput.value = options.arrivalDate;
+    }
+  } else if (editingId !== null && !readonly) {
+    prefill();
+  }
 
   dialog.showModal();
   if (editingId === null) {

@@ -346,6 +346,46 @@ Newest entries at the bottom.
             focus of its own — so setError and the submit focus now unwrap
             radio groups to their individual inputs.
 
+2026-11-05  Calendar: the placeholder view is now a month grid. Each cell
+            shows one number — how many rooms could still be sold that night
+            — from availabilityOn(state, iso): per type, rooms not out of
+            order and not held by a live stay, minus the nights
+            not-checked-in bookings cover, clamped at 0 (old overbooked data
+            can never read -1), summed across types. Monday-first week; past
+            days dimmed but keep their counts, today wears an accent ring,
+            a sold-out night prints its 0 in red (past 0s stay dimmed — red
+            is for nights that can still hurt). Tap a day → bottom sheet
+            with the per-type breakdown ("Small · 1 of 2 free") and a New
+            reservation button that opens the booking sheet with that date
+            prefilled; the button is hidden once the night is behind us.
+            Month state is module-level: null means "follow today", arrows
+            set {year, month}, Today resets to null — so a repaint after a
+            state write never yanks a browsed month back to the live one,
+            and Today only appears once you have browsed away. Nav repaints
+            via section.replaceWith(render()) and refocuses the arrow used,
+            because app.js's render is not reachable from a view and losing
+            focus every arrow press would strand keyboard users.
+            why: the cell answers the only question the desk asks — "a
+            guest wants this date, how many can I still sell?" — so it
+            reuses the exact guard line the booking guards use rather than
+            inventing a second definition of free. One subtlety: it cannot
+            be raw roomServes. roomServes is written for arrivals of today
+            or later — a stay that began yesterday would fail its end check
+            for every night last week and paint the whole past red. So
+            stayCoversNight checks both sides of the stay: it inverts
+            stayExpiry to recover the arrival day (no second copy of the
+            night-of rule to drift) and covers [arrivalDay, checkoutDay) —
+            the checkout morning frees the room for that night, same as
+            back-to-back. Checked-in records are skipped entirely: their
+            room's live stay already accounts them, and counting both would
+            subtract the same guest twice. A booking covers [arrival,
+            arrival + days); dirty and cleaning rooms count as sellable
+            (turnover is assumed, exactly like roomServes). The detail
+            sheet subscribes to the store so a tick flipping a room while
+            it is open keeps the breakdown honest, and on close focus
+            returns to the cell — re-queried by date, because a repaint
+            while the sheet was open makes the original element stale.
+
 
 ================================================================
 4. TODO TASKS
