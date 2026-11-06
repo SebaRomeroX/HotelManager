@@ -434,6 +434,18 @@ Newest entries at the bottom.
             hold is assigned. The reservation sheet's check-in flow is
             unchanged.
 
+2026-11-06  Calendar counts now carry a third colour. The number in a day
+            cell is green when every room is sellable (free equals total),
+            blue when some are still free but the night is not untouched
+            (0 < free < total), and red only when none are left. Previously
+            every available night was muted grey, so the desk had to read
+            the digit to tell "nothing booked" from "almost full". Past days
+            keep their counts but all three colours collapse back to muted:
+            urgency on a night that cannot be sold is noise, matching the
+            existing sold-out-in-the-past rule. The classes are all-free /
+            some-free / full, and the number is still the accessible source
+            of truth — colour is only a second cue.
+
 
 ================================================================
 4. TODO TASKS

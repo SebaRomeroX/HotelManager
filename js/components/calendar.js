@@ -142,7 +142,7 @@ function blank() {
 
 function dayCell(view, day, today) {
   const iso = isoOf(view.year, view.month, day);
-  const { free } = availabilityOn(getState(), iso);
+  const { free, total } = availabilityOn(getState(), iso);
 
   const cell = document.createElement("button");
   cell.type = "button";
@@ -150,7 +150,13 @@ function dayCell(view, day, today) {
   cell.dataset.date = iso;
   if (iso === today) cell.classList.add("cal-cell--today");
   if (iso < today) cell.classList.add("cal-cell--past");
-  if (free === 0) cell.classList.add("cal-cell--full");
+  if (free === 0) {
+    cell.classList.add("cal-cell--full");
+  } else if (free === total) {
+    cell.classList.add("cal-cell--all-free");
+  } else {
+    cell.classList.add("cal-cell--some-free");
+  }
   cell.setAttribute(
     "aria-label",
     `${MONTHS[view.month]} ${day}, ${free} room${free === 1 ? "" : "s"} free — view details`,

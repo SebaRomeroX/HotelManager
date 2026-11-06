@@ -754,12 +754,22 @@ p {
   color: var(--danger);
 }
 
+/* Every room sellable: the night needs no attention. */
+.cal-cell--all-free .cal-cell__free {
+  color: var(--state-vacant);
+}
+
+/* Some rooms left: neither sold out nor untouched. */
+.cal-cell--some-free .cal-cell__free {
+  color: var(--accent);
+}
+
 .cal-cell--past {
   color: var(--text-muted);
 }
 
-/* A sold-out day in the past stays dimmed — red is for nights to come. */
-.cal-cell--past.cal-cell--full .cal-cell__free {
+/* Past days keep their counts but not their urgency: no green, blue or red. */
+.cal-cell--past .cal-cell__free {
   color: var(--text-muted);
 }
 
