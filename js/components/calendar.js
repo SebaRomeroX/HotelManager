@@ -1,9 +1,6 @@
 import { getState } from "../store.js";
 import { availabilityOn } from "../reservations.js";
-import { emptySection } from "../components/empty.js";
-import { openAvailabilityDialog } from "../components/availability-dialog.js";
-
-export const title = "Calendar";
+import { openAvailabilityDialog } from "./availability-dialog.js";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -18,21 +15,20 @@ const DOW = ["M", "T", "W", "T", "F", "S", "S"];
 // write never yanks a browsed month back. Arrows set it, Today clears it.
 let anchor = null;
 
-function todayISO() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${now.getFullYear()}-${month}-${day}`;
-}
+// The Reservations screen owns the title; this block only supplies the grid.
+// It is its own <section> so step() can replace just the calendar after a
+// month change instead of the whole screen.
+export function renderCalendar() {
+  const section = document.createElement("section");
+  section.className = "stack cal-block";
 
-function isoOf(year, month, day) {
-  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-}
-
-export function render() {
   const rooms = getState().rooms ?? [];
   if (rooms.length === 0) {
-    return emptySection(title, "Add rooms to see availability.");
+    const empty = document.createElement("p");
+    empty.className = "empty";
+    empty.textContent = "Add rooms to see availability.";
+    section.append(empty);
+    return section;
   }
 
   const now = new Date();
@@ -40,13 +36,6 @@ export function render() {
   const first = new Date(view.year, view.month, 1);
   const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
   const today = todayISO();
-
-  const section = document.createElement("section");
-  section.className = "stack";
-
-  const heading = document.createElement("h2");
-  heading.className = "view__title";
-  heading.textContent = title;
 
   const nav = document.createElement("div");
   nav.className = "cal-nav";
@@ -96,8 +85,19 @@ export function render() {
     grid.append(blank());
   }
 
-  section.append(heading, nav, dow, grid);
+  section.append(nav, dow, grid);
   return section;
+}
+
+function todayISO() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+function isoOf(year, month, day) {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 function navButton(which, glyph, label) {
@@ -125,7 +125,7 @@ function step(which, section) {
     anchor = { year: shifted.getFullYear(), month: shifted.getMonth() };
   }
 
-  const fresh = render();
+  const fresh = renderCalendar();
   section.replaceWith(fresh);
   // Today hides itself on the fresh render, so focus falls back to the nav's
   // first arrow instead of dropping to <body>.

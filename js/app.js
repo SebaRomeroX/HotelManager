@@ -1,10 +1,9 @@
 import * as rooms from "./views/rooms.js";
 import * as reservations from "./views/reservations.js";
-import * as calendar from "./views/calendar.js";
 import { subscribe } from "./store.js";
 import { subscribeTick } from "./ticker.js";
 
-const routes = { rooms, reservations, calendar };
+const routes = { rooms, reservations };
 const DEFAULT_ROUTE = "rooms";
 
 const view = document.getElementById("view");
@@ -12,6 +11,9 @@ const tabs = [...document.querySelectorAll(".tab")];
 
 function currentRoute() {
   const name = location.hash.replace(/^#\/?/, "");
+  // Old Calendar tab and bookmarks land on the merged screen; the URL is left
+  // untouched so the address they saved keeps working.
+  if (name === "calendar") return "reservations";
   return Object.hasOwn(routes, name) ? name : DEFAULT_ROUTE;
 }
 

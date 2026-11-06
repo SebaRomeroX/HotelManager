@@ -6,6 +6,7 @@ import {
   reservationMeta,
 } from "../reservations.js";
 import { openReservationDialog } from "../components/reservation-dialog.js";
+import { renderCalendar } from "../components/calendar.js";
 
 export const title = "Reservations";
 
@@ -23,20 +24,13 @@ export function render() {
   heading.className = "view__title";
   heading.textContent = title;
 
-  const create = document.createElement("button");
-  create.type = "button";
-  create.className = "btn btn--primary btn--block";
-  create.textContent = "New reservation";
-  create.dataset.newReservation = "";
-  create.setAttribute("aria-haspopup", "dialog");
-  create.addEventListener("click", () => openReservationDialog());
-
+  const rooms = getState().rooms ?? [];
   const groups = groupReservations(getState().reservations ?? []);
   const total = GROUPS.reduce((count, [, key]) => count + groups[key].length, 0);
 
-  section.append(heading, create);
+  section.append(heading, renderCalendar());
   if (total === 0) {
-    section.append(noReservations());
+    section.append(noReservations(rooms.length > 0));
   } else {
     section.append(...GROUPS.map(([label, key]) => group(groups[key], label)).filter(Boolean));
   }
@@ -106,9 +100,11 @@ function row(reservation) {
   return item;
 }
 
-function noReservations() {
+function noReservations(calendarVisible) {
   const empty = document.createElement("p");
   empty.className = "empty";
-  empty.textContent = "No reservations yet.";
+  empty.textContent = calendarVisible
+    ? "No reservations yet — tap a day above to book."
+    : "No reservations yet.";
   return empty;
 }

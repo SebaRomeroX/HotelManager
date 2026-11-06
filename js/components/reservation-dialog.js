@@ -129,6 +129,9 @@ let editingId = null;
 let confirmingCancel = false;
 // Which control owns the visible error, so typing there can clear it.
 let errorField = null;
+// Date whose calendar cell takes focus after the sheet closes — a booking
+// started from a day lands back on that day, not on the list.
+let focusDate = null;
 
 // A radio group comes back from form.elements as a RadioNodeList — not an
 // element, so it has no setAttribute/focus of its own. Every roomType problem
@@ -409,15 +412,22 @@ dialog.addEventListener("click", (event) => {
 
 dialog.addEventListener("close", () => {
   const returnTo = editingId;
+  const date = focusDate;
   editingId = null;
+  focusDate = null;
   resetForm();
 
   // Saving repaints the list, so both the opener and the rows are new
   // elements by now and the browser's own restoration finds nothing. After a
-  // cancel the row is gone entirely — fall back to the screen's button.
+  // cancel the row is gone entirely — fall back to the day it was booked for,
+  // then to today's cell (none of these exist when browsing another month).
   const row =
     returnTo && document.querySelector(`.res-row[data-id="${returnTo}"]`);
-  (row ?? document.querySelector("[data-new-reservation]"))?.focus();
+  const target =
+    row ??
+    document.querySelector(`.cal-cell[data-date="${date}"]`) ??
+    document.querySelector(".cal-cell--today");
+  target?.focus();
 });
 
 export function openReservationDialog(reservationId = null, options = {}) {
@@ -431,6 +441,7 @@ export function openReservationDialog(reservationId = null, options = {}) {
 
   const readonly = readOnly();
   resetForm();
+  focusDate = options.arrivalDate ?? findEditing()?.arrivalDate ?? null;
 
   // Calendar shortcut: start a booking for the night that was tapped. A past
   // date would be refused by the validator anyway — min already says no.

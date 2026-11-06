@@ -76,10 +76,10 @@ Kept deliberately coarse. Details are decided feature by feature as we
 build, and recorded in the dev log.
 - Rooms: create and edit rooms.
 - Room states: the operational status of a room.
-- Reservations: guests staying in rooms over dates.
-- Calendar: the timeline view tying rooms and reservations together.
+- Reservations: guests staying in rooms over dates, plus the month calendar
+  that ties rooms and reservations together.
 
-Nothing else is in scope until these four are working.
+Nothing else is in scope until these three are working.
 
 2.4 Out of scope (for now)
 - Accounts, auth, permissions, multi-user, server sync.
@@ -385,6 +385,31 @@ Newest entries at the bottom.
             it is open keeps the breakdown honest, and on close focus
             returns to the cell — re-queried by date, because a repaint
             while the sheet was open makes the original element stale.
+
+2026-11-06  Calendar folded into Reservations. The standalone Calendar tab
+            is gone; the Reservations screen now reads title → month grid →
+            list. js/views/calendar.js became js/components/calendar.js and
+            exports renderCalendar(), which returns the calendar as its own
+            nested <section class="stack cal-block"> with no heading — the
+            screen owns the title. Keeping it a separate section matters:
+            step() repaints with closest("section").replaceWith(...), so if
+            the grid sat directly in the screen, an arrow press would wipe
+            the title and list too. The old screen's "New reservation" button
+            is deleted as well; it duplicated the booking path that already
+            starts by tapping a day (the only place a booking gets its date
+            context), and now there is one obvious entry point instead of two
+            that behaved differently. Empty-list copy follows the calendar:
+            with rooms present it says "No reservations yet — tap a day above
+            to book.", with no rooms it stays the plain "No reservations yet."
+            and the grid area shows "Add rooms to see availability."
+            #/calendar is aliased to the reservations route without rewriting
+            the URL, so the old tab and any bookmark land on the merged
+            screen. Closing the booking sheet now focuses, in order: the row
+            just edited, the cell for the date it was opened from, then
+            today's cell — the old fallback pointed at the removed button.
+            The availability sheet → booking sheet path still hands over its
+            date via options.arrivalDate, which doubles as that focus date.
+            Deleted js/components/empty.js; the calendar was its only caller.
 
 
 ================================================================
