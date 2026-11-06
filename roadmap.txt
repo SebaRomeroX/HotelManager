@@ -411,6 +411,29 @@ Newest entries at the bottom.
             date via options.arrivalDate, which doubles as that focus date.
             Deleted js/components/empty.js; the calendar was its only caller.
 
+2026-11-06  Arriving hold got its own arrival flow. The blue card label now
+            reads "Arriving - {host}" instead of "Occupied - arriving": the
+            desk's question at the card is who is coming, not which
+            pseudo-state the room is in. Long host names ellipsize so the
+            status line stays one row, and the accessible name says
+            "Arriving for {host} — check in". Tapping a held room opens the
+            state sheet in arrival mode: the five state rows are hidden
+            (decision: the room is spoken for, so changing its state
+            mid-arrival is a detour) and the sheet shows the host, the stay
+            summary, and Check in / Cancel. Check in expands to host, room,
+            type, arrival, checkout and duration, then a Confirm button. That
+            path reuses checkInReservation, so the room timer and checkedInAt
+            are written exactly like the reservation-sheet path, and the
+            refusals (no free room, would strand another booking) reuse the
+            same wording. Cancel arms to "Sure?" and removes the booking; the
+            derived hold disappears and the room is vacant — it always was
+            underneath. Both actions close the sheet and return focus to the
+            card. The panel is recomputed from arrivingAssignment on every
+            store render, so if the hold moves while the sheet is open the
+            details follow, and the normal state rows return as soon as no
+            hold is assigned. The reservation sheet's check-in flow is
+            unchanged.
+
 
 ================================================================
 4. TODO TASKS
@@ -421,6 +444,7 @@ Newest entries at the bottom.
 - Propagate duration edits back to a checked-in reservation's room stay (checked-in reservations are read-only until then)
 - Reservation-vs-reservation capacity: the guards compare rooms against dates, not bookings against each other — two bookings for the only room of a type on overlapping dates both get added and surface as "No free room" at check-in
 - Guard OOS/dirty/cleaning against live holds too if hand-moving a held room proves annoying (decided 2026-11-04: occupied only)
+- Arrival sheet hides room-state overrides: cancel the booking first to mark a held room OOS/dirty (revisit if the desk needs it mid-arrival)
 - Make the 10:00 boundary, the night-of cutoff and the cleaning durations configurable once a settings screen exists
 
 

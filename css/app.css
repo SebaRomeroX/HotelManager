@@ -431,6 +431,14 @@ p {
   color: var(--state, var(--text-muted));
 }
 
+/* Host names can be long; keep the blue status line to one row. */
+.card__state > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .state-dot {
   flex: none;
   width: 8px;
@@ -442,6 +450,11 @@ p {
 .state-list {
   display: grid;
   gap: var(--space-2);
+}
+
+/* Author display beats the UA rule behind the hidden attribute. */
+.state-list[hidden] {
+  display: none;
 }
 
 .state-row {
@@ -488,6 +501,66 @@ p {
 
 .state-row[aria-current="true"] .state-row__check {
   visibility: visible;
+}
+
+.arrival {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+/* Author display beats the UA rule behind the hidden attribute. */
+.arrival[hidden] {
+  display: none;
+}
+
+.arrival__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.arrival__host {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.arrival__facts {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.arrival__facts > div {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: var(--space-2);
+}
+
+.arrival__facts dt {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.arrival__facts dd {
+  margin: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.arrival__confirmation {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.arrival__confirmation[hidden] {
+  display: none;
 }
 
 .days-form {

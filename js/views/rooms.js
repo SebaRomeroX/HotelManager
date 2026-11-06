@@ -44,7 +44,9 @@ function cardGrid(rooms, held) {
 }
 
 function roomCard(room, arriving) {
-  const stateText = arriving ? "Occupied - arriving" : roomStateText(room);
+  const stateText = arriving
+    ? `Arriving - ${arriving.hostName}`
+    : roomStateText(room);
 
   // Headings are not valid inside a button, so the card's name is a span; the
   // accessible name is set explicitly below.
@@ -57,8 +59,8 @@ function roomCard(room, arriving) {
   card.setAttribute(
     "aria-label",
     arriving
-      ? `${room.name}, ${typeLabel(room.type)}, Occupied arriving for ` +
-          `${arriving.hostName} — set state`
+      ? `${room.name}, ${typeLabel(room.type)}, Arriving for ` +
+          `${arriving.hostName} — check in`
       : `${room.name}, ${typeLabel(room.type)}, ${stateText} — set state`,
   );
   card.addEventListener("click", () => openStateDialog(room.id));
