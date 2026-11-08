@@ -476,6 +476,27 @@ Newest entries at the bottom.
             and the n count always come from the same store write.
 
 
+2026-11-08  Pending bookings fold into an Incoming sheet, leaving the
+            Reservations page as the calendar plus two buttons. Every pending
+            booking — today's arrivals and future ones — lives in the sheet
+            behind Incoming (n); check-in moves a guest straight into the
+            register, so there is no ambiguous middle state and nothing is
+            duplicated between page and sheet. Today's arrivals lead the
+            sheet (already name-sorted), then upcoming bookings soonest
+            first; each row keeps its day label ("Today", "In 2 days") so one
+            list still reads in order. The sheet reuses the shared
+            reservationRow builder, so host, stay and day label cannot drift
+            from how a booking looked in the old list. Tapping a row closes
+            the sheet and opens the normal booking sheet in edit mode, with
+            focus returning to the Incoming button when that sheet closes.
+            Closing the sheet itself also returns focus to Incoming. With no
+            pending bookings the sheet shows "No incoming reservations." and
+            focuses Close; the page instead says "No pending reservations."
+            when history exists, or keeps the "tap a day above to book" hint
+            for a brand-new state. Counts come from the same
+            groupReservations partition as the rows, so cancelling or
+            checking in updates both immediately.
+
 ================================================================
 4. TODO TASKS
 ================================================================

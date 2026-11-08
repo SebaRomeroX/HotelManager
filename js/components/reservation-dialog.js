@@ -132,6 +132,9 @@ let errorField = null;
 // Date whose calendar cell takes focus after the sheet closes — a booking
 // started from a day lands back on that day, not on the list.
 let focusDate = null;
+// Selector for a control outside the list that opened the sheet (for example
+// the Incoming button); preferred over the calendar fallback.
+let focusSelector = null;
 
 // A radio group comes back from form.elements as a RadioNodeList — not an
 // element, so it has no setAttribute/focus of its own. Every roomType problem
@@ -413,18 +416,25 @@ dialog.addEventListener("click", (event) => {
 dialog.addEventListener("close", () => {
   const returnTo = editingId;
   const date = focusDate;
+  const selector = focusSelector;
   editingId = null;
   focusDate = null;
+  focusSelector = null;
   resetForm();
 
   // Saving repaints the list, so both the opener and the rows are new
   // elements by now and the browser's own restoration finds nothing. After a
-  // cancel the row is gone entirely — fall back to the day it was booked for,
-  // then to today's cell (none of these exist when browsing another month).
-  const row =
+  // cancel the row is gone entirely — fall back to the sheet that opened this
+  // one, then to the day it was booked for, then to today's cell (none of
+  // these exist when browsing another month). Rows can also live inside a
+  // closed sheet, so only a laid-out row is a valid focus target.
+  const rowCandidate =
     returnTo && document.querySelector(`.res-row[data-id="${returnTo}"]`);
+  const row = rowCandidate?.getClientRects().length ? rowCandidate : null;
+  const returnTarget = selector ? document.querySelector(selector) : null;
   const target =
     row ??
+    returnTarget ??
     document.querySelector(`.cal-cell[data-date="${date}"]`) ??
     document.querySelector(".cal-cell--today");
   target?.focus();
@@ -442,6 +452,7 @@ export function openReservationDialog(reservationId = null, options = {}) {
   const readonly = readOnly();
   resetForm();
   focusDate = options.arrivalDate ?? findEditing()?.arrivalDate ?? null;
+  focusSelector = options.focusSelector ?? null;
 
   // Calendar shortcut: start a booking for the night that was tapped. A past
   // date would be refused by the validator anyway — min already says no.

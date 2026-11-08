@@ -1,20 +1,10 @@
 import { getState } from "../store.js";
-import {
-  groupReservations,
-  isPastReservation,
-  relativeDayLabel,
-  reservationMeta,
-} from "../reservations.js";
-import { openReservationDialog } from "../components/reservation-dialog.js";
+import { groupReservations } from "../reservations.js";
+import { openIncomingDialog } from "../components/incoming-dialog.js";
 import { openRegisterDialog } from "../components/register-dialog.js";
 import { renderCalendar } from "../components/calendar.js";
 
 export const title = "Reservations";
-
-const GROUPS = [
-  ["Today", "today"],
-  ["Incoming", "incoming"],
-];
 
 export function render() {
   const section = document.createElement("section");
@@ -27,79 +17,33 @@ export function render() {
   const state = getState();
   const rooms = state.rooms ?? [];
   const groups = groupReservations(state.reservations ?? []);
-  const total = GROUPS.reduce((count, [, key]) => count + groups[key].length, 0);
+  const pending = groups.today.length + groups.incoming.length;
+  const history = (state.register ?? []).length;
 
   section.append(heading, renderCalendar());
-  if (total === 0) {
-    section.append(noReservations(rooms.length > 0));
-  } else {
-    section.append(...GROUPS.map(([label, key]) => group(groups[key], label)).filter(Boolean));
+  if (pending === 0) {
+    section.append(noPending(rooms.length > 0, history > 0));
   }
-  section.append(registerButton((state.register ?? []).length));
+
+  // The page is the calendar; every pending booking and all history fold into
+  // sheets below it, so the screen answers "who is arriving?" without a list
+  // that grows with the calendar.
+  const actions = document.createElement("div");
+  actions.className = "list-actions";
+  actions.append(incomingButton(pending), registerButton(history));
+  section.append(actions);
   return section;
 }
 
-// Empty groups vanish entirely rather than showing a heading over nothing.
-function group(reservations, label) {
-  if (reservations.length === 0) return null;
-
-  const block = document.createElement("section");
-  block.className = "res-group";
-
-  const id = `res-group-${label.toLowerCase()}`;
-  block.setAttribute("aria-labelledby", id);
-
-  const heading = document.createElement("h3");
-  heading.className = "res-group__title";
-  heading.id = id;
-  heading.textContent = label;
-
-  const ul = document.createElement("ul");
-  ul.className = "res-list";
-  ul.append(...reservations.map(row));
-
-  block.append(heading, ul);
-  return block;
-}
-
-function row(reservation) {
-  const item = document.createElement("li");
-  const dayLabel = relativeDayLabel(reservation.arrivalDate);
-  const past = isPastReservation(reservation);
-
-  // Headings are not valid inside a button, so the name is a span; the
-  // accessible name is set explicitly below — same pattern as room cards.
+function incomingButton(count) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "res-row";
-  button.dataset.id = reservation.id;
-  button.setAttribute(
-    "aria-label",
-    `${reservation.hostName}, ${reservationMeta(reservation)}, ` +
-      `${dayLabel} — ${past ? "view" : "edit"}`,
-  );
-  button.addEventListener("click", () => openReservationDialog(reservation.id));
-
-  const main = document.createElement("span");
-  main.className = "res-row__main";
-
-  const name = document.createElement("span");
-  name.className = "res-row__name";
-  name.textContent = reservation.hostName;
-
-  const meta = document.createElement("span");
-  meta.className = "res-row__meta";
-  meta.textContent = reservationMeta(reservation);
-
-  main.append(name, meta);
-
-  const day = document.createElement("span");
-  day.className = "res-row__day";
-  day.textContent = dayLabel;
-
-  button.append(main, day);
-  item.append(button);
-  return item;
+  button.className = "btn btn--block";
+  button.dataset.incoming = "";
+  button.setAttribute("aria-haspopup", "dialog");
+  button.textContent = `Incoming (${count})`;
+  button.addEventListener("click", () => openIncomingDialog());
+  return button;
 }
 
 // History sits below the live list, never mixed into it: the register is a
@@ -115,11 +59,15 @@ function registerButton(count) {
   return button;
 }
 
-function noReservations(calendarVisible) {
+function noPending(hasRooms, hasHistory) {
   const empty = document.createElement("p");
   empty.className = "empty";
-  empty.textContent = calendarVisible
-    ? "No reservations yet — tap a day above to book."
-    : "No reservations yet.";
+  if (hasHistory) {
+    empty.textContent = "No pending reservations.";
+  } else if (hasRooms) {
+    empty.textContent = "No reservations yet — tap a day above to book.";
+  } else {
+    empty.textContent = "No reservations yet.";
+  }
   return empty;
 }
