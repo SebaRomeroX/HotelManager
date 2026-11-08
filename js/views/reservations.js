@@ -6,6 +6,7 @@ import {
   reservationMeta,
 } from "../reservations.js";
 import { openReservationDialog } from "../components/reservation-dialog.js";
+import { openRegisterDialog } from "../components/register-dialog.js";
 import { renderCalendar } from "../components/calendar.js";
 
 export const title = "Reservations";
@@ -13,7 +14,6 @@ export const title = "Reservations";
 const GROUPS = [
   ["Today", "today"],
   ["Incoming", "incoming"],
-  ["Past", "past"],
 ];
 
 export function render() {
@@ -24,8 +24,9 @@ export function render() {
   heading.className = "view__title";
   heading.textContent = title;
 
-  const rooms = getState().rooms ?? [];
-  const groups = groupReservations(getState().reservations ?? []);
+  const state = getState();
+  const rooms = state.rooms ?? [];
+  const groups = groupReservations(state.reservations ?? []);
   const total = GROUPS.reduce((count, [, key]) => count + groups[key].length, 0);
 
   section.append(heading, renderCalendar());
@@ -34,6 +35,7 @@ export function render() {
   } else {
     section.append(...GROUPS.map(([label, key]) => group(groups[key], label)).filter(Boolean));
   }
+  section.append(registerButton((state.register ?? []).length));
   return section;
 }
 
@@ -98,6 +100,19 @@ function row(reservation) {
   button.append(main, day);
   item.append(button);
   return item;
+}
+
+// History sits below the live list, never mixed into it: the register is a
+// place to look something up, not a section to scan with today's arrivals.
+function registerButton(count) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn--block";
+  button.dataset.register = "";
+  button.setAttribute("aria-haspopup", "dialog");
+  button.textContent = `Register (${count})`;
+  button.addEventListener("click", () => openRegisterDialog());
+  return button;
 }
 
 function noReservations(calendarVisible) {

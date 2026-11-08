@@ -58,7 +58,7 @@ function armNext() {
       msToWallBoundary(),
       msToNextCleaningStep(now),
       // Midnight rolls the sections and opens new arrival windows; a cutoff
-      // expires a no-show. Both repaint exactly, not up to a minute late.
+      // logs a no-show. Both repaint exactly, not up to a minute late.
       nextReservationBoundary(getState(), now) - now.getTime(),
     ),
   );

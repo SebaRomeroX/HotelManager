@@ -446,14 +446,44 @@ Newest entries at the bottom.
             some-free / full, and the number is still the accessible source
             of truth — colour is only a second cue.
 
+2026-11-07  Register separates history from the live list. Storage moves to
+            schema v3: reservations are pending-only and a new register array
+            holds snapshot entries, so the list shows Today and Incoming and
+            nothing else. A cancellation, a check-in or the 04:00 no-show
+            cutoff all copy the booking out of reservations and into the
+            register with a status — checked_in, cancelled or no_show — plus
+            registeredAt. Check-ins also snapshot roomId and roomName: the
+            room may be renamed or deleted later and the history must still
+            read correctly. Manually cancelling keeps its existing two-step
+            flow; check-in keeps writing the room timer exactly as before,
+            then moves the record immediately, so today's checked-in arrivals
+            leave the list as soon as the desk hands over the key. The cutoff
+            path used to drop no-shows silently; it now logs them as No-show
+            at the moment the window closed. The v2 → v3 migration moves every
+            checked-in record (registeredAt from checkedInAt) and every lapsed
+            pending record (registeredAt from its D+1 04:00 cutoff) into the
+            register, keeping the date the event happened rather than the
+            migration time; only unparseable stamps fall back to now. Live
+            events prepend, and the sheet sorts newest first anyway.
+            The Register (n) button sits below the list/empty state. Its sheet
+            lists entries newest first with inline host, status badge, stay,
+            check-in room and registered time. Delete is per-row and arms to
+            "Sure?"; Clear register is hidden when empty and arms to "Confirm
+            clear". Both actions only touch register history — rooms and
+            active bookings are never involved — and focus moves to the next
+            entry's Delete (or Close) after a delete, Close after a clear, and
+            back to the Register button whenever the sheet closes. Refusals
+            and the n count always come from the same store write.
+
 
 ================================================================
 4. TODO TASKS
 ================================================================
 
 - Deleting a room must first check that no reservation references it
-- Check-out: free an occupied stay into needs cleaning from its checked-in reservation (check-in now exists via reservation validation)
-- Propagate duration edits back to a checked-in reservation's room stay (checked-in reservations are read-only until then)
+- Check-out: free an occupied stay into needs cleaning using the register's checked-in entry (the active list no longer carries checked-in records)
+- Propagate duration edits back to a checked-in stay's room timer (checked-in records now live in the register, read-only)
+- Register history has no pruning or filtering; add one when the list grows past a comfortable scroll
 - Reservation-vs-reservation capacity: the guards compare rooms against dates, not bookings against each other — two bookings for the only room of a type on overlapping dates both get added and surface as "No free room" at check-in
 - Guard OOS/dirty/cleaning against live holds too if hand-moving a held room proves annoying (decided 2026-11-04: occupied only)
 - Arrival sheet hides room-state overrides: cancel the booking first to mark a held room OOS/dirty (revisit if the desk needs it mid-arrival)

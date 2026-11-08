@@ -117,7 +117,7 @@ export function reservationError(values, today = new Date(), { currentDate } = {
 // exactly the arrivals the night-of rule exists for — still finds its room
 // held. Unparseable dates have no window: they never qualify as arriving and
 // never auto-cancel, leaving manual cancel as their way out.
-function windowEnd(arrivalDate) {
+export function noShowCutoff(arrivalDate) {
   const end = parseDate(arrivalDate);
   if (!end) return null;
 
@@ -135,38 +135,36 @@ export function isArrivingNow(reservation, now = new Date()) {
   const arrival = parseDate(reservation.arrivalDate);
   if (!arrival) return false;
 
-  const end = windowEnd(reservation.arrivalDate);
+  const end = noShowCutoff(reservation.arrivalDate);
   return now >= arrival && now < end;
 }
 
 // The one past line — consumed by sorting, grouping, the edit lock and the
-// read-only sheet, so they can never disagree:
-//   checked-in  → the calendar day it landed on; it leaves Today the day after
+// legacy read-only sheet, so they can never disagree:
+//   checked-in  → the calendar day it landed on; new check-ins leave the
+//                 active list for the register, so this only sees old records
 //   pending     → its arrival window (00:00 D … 04:00 D+1); a straddling
 //                 booking is NOT past while that window holds
-//   unparseable → past, landing in the read-only section where it can still
-//                 be cancelled instead of sitting in Incoming forever
+//   unparseable → past, so migration and reconcile send it to the register
 export function isPastReservation(reservation, now = new Date()) {
   const arrival = parseDate(reservation.arrivalDate);
   if (!arrival) return true;
 
   if (reservation.checkedInAt) return arrival < startOfDay(now);
 
-  const end = windowEnd(reservation.arrivalDate);
+  const end = noShowCutoff(reservation.arrivalDate);
   return now >= end;
 }
 
-// Checked-in stays are read-only: their duration lives on the room now and
-// cannot be propagated back from here (see the roadmap TODO).
+// Checked-in stays are read-only: history lives in the register, and their
+// duration belongs to the room now (see the roadmap TODO).
 export function isReadOnlyReservation(reservation, now = new Date()) {
   return Boolean(reservation.checkedInAt) || isPastReservation(reservation, now);
 }
 
-// Upcoming first (soonest arrival), then the past with the most recent first —
-// the front desk reads what is next without losing what just left. Equal dates
-// fall through to the host name so the order never jitters between renders.
-// "Past" is isPastReservation, so a booking inside its no-show window sorts
-// with the upcoming ones — tomorrow's sections and this order cannot split.
+// Upcoming first (soonest arrival), then the past with the most recent first.
+// The Reservations view renders only today and incoming, but keeping the past
+// last means migration/reconcile see the same stable order.
 export function sortReservations(reservations, today = new Date()) {
   return [...reservations].sort((a, b) => {
     const aPast = isPastReservation(a, today);
@@ -210,10 +208,74 @@ export function reservationMeta(reservation) {
   );
 }
 
-// The three sections of the list, each already in display order: today by
-// name (one date), incoming soonest first, past most recent first. One sort
-// then a stable partition keeps section order and row order from drifting
-// apart, and both draw the past line through isPastReservation.
+// The register is history: every entry is a copy of the reservation at the
+// moment it left the active list, plus why it left. Snapshots keep the past
+// stable when a room is renamed or a booking would otherwise have been edited.
+export const REGISTER_STATUS_LABELS = {
+  checked_in: "Checked in",
+  cancelled: "Cancelled",
+  no_show: "No-show",
+};
+
+export function registerStatusLabel(status) {
+  return REGISTER_STATUS_LABELS[status] ?? status;
+}
+
+export function registerEntry(
+  reservation,
+  status,
+  { registeredAt = new Date().toISOString(), room = null } = {},
+) {
+  const entry = {
+    ...reservation,
+    status,
+    registeredAt,
+  };
+
+  // Check-ins remember which room took the stay; the room may be renamed or
+  // deleted later, so the entry carries the name it had at the time.
+  if (room) {
+    entry.roomId = room.id;
+    entry.roomName = room.name;
+  }
+
+  return entry;
+}
+
+// Newest first. Equal stamps fall through to the host name so the order never
+// jitters between renders.
+export function sortRegister(register) {
+  return [...register].sort((a, b) => {
+    const aTime = new Date(a.registeredAt).getTime() || 0;
+    const bTime = new Date(b.registeredAt).getTime() || 0;
+    return (
+      bTime - aTime ||
+      (a.hostName ?? "").localeCompare(b.hostName ?? "", undefined, {
+        sensitivity: "base",
+      })
+    );
+  });
+}
+
+export function removeRegisterEntry(state, id) {
+  const register = state.register ?? [];
+  if (!register.some((entry) => entry.id === id)) return state;
+
+  return {
+    ...state,
+    register: register.filter((entry) => entry.id !== id),
+  };
+}
+
+export function clearRegister(state) {
+  if ((state.register ?? []).length === 0) return state;
+  return { ...state, register: [] };
+}
+
+// The three buckets the list can partition into, each already in display
+// order: today by name (one date), incoming soonest first, past most recent
+// first. The view renders only today and incoming; keeping past in the shape
+// lets migration/reconcile share the same partition.
 export function groupReservations(reservations, today = new Date()) {
   const sorted = sortReservations(reservations, today);
   const todayStart = startOfDay(today);
@@ -289,13 +351,23 @@ export function updateReservation(state, id, values, today = new Date()) {
   };
 }
 
-export function removeReservation(state, id) {
+// Cancelling leaves the active list and enters the register. The record is
+// copied, not moved in place: the register keeps what the booking was at the
+// moment the desk cancelled it.
+export function removeReservation(state, id, now = new Date()) {
   const reservations = state.reservations ?? [];
-  if (!reservations.some((reservation) => reservation.id === id)) return state;
+  const reservation = reservations.find((candidate) => candidate.id === id);
+  if (!reservation) return state;
 
   return {
     ...state,
-    reservations: reservations.filter((reservation) => reservation.id !== id),
+    reservations: reservations.filter((candidate) => candidate.id !== id),
+    register: [
+      registerEntry(reservation, "cancelled", {
+        registeredAt: now.toISOString(),
+      }),
+      ...(state.register ?? []),
+    ],
   };
 }
 
@@ -528,8 +600,8 @@ export function arrivingAssignment(state, now = new Date()) {
 
 // One state transition: the room takes the stay timer exactly as a manual
 // set-occupied would — so the 10:00 boundary, the countdown label and the
-// night-of rule all apply from now — and the reservation is stamped
-// checked-in. Refuses (same reference) unless the booking is inside its
+// night-of rule all apply from now — and the booking moves into the register
+// as checked-in. Refuses (same reference) unless the booking is inside its
 // arrival window and a free matching room is actually held for it.
 export function checkInReservation(state, id, now = new Date()) {
   const reservation = (state.reservations ?? []).find(
@@ -560,38 +632,64 @@ export function checkInReservation(state, id, now = new Date()) {
   // did not take.
   if (withStay === state) return state;
 
+  const room = (withStay.rooms ?? []).find((candidate) => candidate.id === roomId);
+
   return {
     ...withStay,
-    reservations: withStay.reservations.map((candidate) =>
-      candidate.id === id
-        ? { ...candidate, checkedInAt: now.toISOString() }
-        : candidate,
+    // Check-in is a hand-over to housekeeping: the booking is history now. The
+    // room's live stay carries occupancy from here.
+    reservations: withStay.reservations.filter(
+      (candidate) => candidate.id !== id,
     ),
+    register: [
+      registerEntry(reservation, "checked_in", {
+        registeredAt: now.toISOString(),
+        room,
+      }),
+      ...(withStay.register ?? []),
+    ],
   };
 }
 
 function isNoShow(reservation, now) {
   if (reservation.checkedInAt) return false;
 
-  const end = windowEnd(reservation.arrivalDate);
+  const end = noShowCutoff(reservation.arrivalDate);
   return end !== null && now >= end;
 }
 
-// Drop bookings whose arrival window closed unvalidated. Same contract as
-// reconcileExpiries: identical reference when nothing expired.
+// Move bookings whose arrival window closed unvalidated into the register as
+// no-shows, newest event first. Same contract as reconcileExpiries: identical
+// reference when nothing expired.
 export function reconcileReservations(state, now = new Date()) {
   const reservations = state.reservations ?? [];
+  const expired = reservations.filter((reservation) =>
+    isNoShow(reservation, now),
+  );
+  if (expired.length === 0) return state;
+
   const kept = reservations.filter(
     (reservation) => !isNoShow(reservation, now),
   );
-  if (kept.length === reservations.length) return state;
+  const entries = expired.map((reservation) =>
+    registerEntry(reservation, "no_show", {
+      // Record when the booking actually lapsed, not when the tab woke up.
+      registeredAt:
+        noShowCutoff(reservation.arrivalDate)?.toISOString() ??
+        now.toISOString(),
+    }),
+  );
 
-  return { ...state, reservations: kept };
+  return {
+    ...state,
+    reservations: kept,
+    register: [...entries, ...(state.register ?? [])],
+  };
 }
 
 // Earliest moment reservations change on their own: midnight rolls the
-// sections and starts new arrival windows, a cutoff expires a no-show.
-// Past cutoffs are skipped — reconcile drops those before this ever matters.
+// sections and starts new arrival windows, a cutoff closes a no-show.
+// Past cutoffs are skipped — migration/reconcile move those first.
 export function nextReservationBoundary(state, now = new Date()) {
   const midnight = startOfDay(now);
   midnight.setDate(midnight.getDate() + 1);
@@ -600,7 +698,7 @@ export function nextReservationBoundary(state, now = new Date()) {
   for (const reservation of state.reservations ?? []) {
     if (reservation.checkedInAt) continue;
 
-    const end = windowEnd(reservation.arrivalDate);
+    const end = noShowCutoff(reservation.arrivalDate);
     if (!end) continue;
 
     const at = end.getTime();

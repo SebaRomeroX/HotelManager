@@ -676,6 +676,88 @@ p {
   text-transform: uppercase;
 }
 
+/* ===================== register ===================== */
+
+.register-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Author display beats the UA rule behind the hidden attribute. */
+.register-list[hidden],
+.register-clear[hidden] {
+  display: none;
+}
+
+.register-entry {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.register-entry__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.register-entry__name {
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.register-status {
+  flex: none;
+  padding: 0 var(--space-2);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.register-status--checked_in {
+  color: var(--state-vacant);
+}
+
+.register-status--cancelled {
+  color: var(--danger);
+}
+
+.register-status--no_show {
+  color: var(--state-dirty);
+}
+
+.register-entry__meta,
+.register-entry__when {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.register-entry__room {
+  font-size: var(--text-sm);
+}
+
+.register-entry__delete {
+  justify-self: start;
+  margin-top: var(--space-1);
+}
+
+.register-clear {
+  display: grid;
+}
+
+
 @media (min-width: 720px) {
   .dialog {
     inset: 0;
