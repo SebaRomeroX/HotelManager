@@ -6,25 +6,33 @@ import {
   typeLabel,
 } from "../rooms.js";
 import { arrivingAssignment } from "../reservations.js";
-import { openRoomsDialog } from "../components/rooms-dialog.js";
-import { openStateDialog } from "../components/state-dialog.js";
+import { openRoomsDialog } from "./rooms-dialog.js";
+import { openStateDialog } from "./state-dialog.js";
 
-export const title = "Rooms";
-
-export function render() {
+// The operational half of the single screen: every room as a tappable card,
+// with today's arriving booking painted over its real state.
+export function renderRoomGrid() {
   const section = document.createElement("section");
   section.className = "stack";
+  section.setAttribute("aria-labelledby", "rooms-title");
 
-  const heading = document.createElement("h2");
-  heading.className = "view__title";
-  heading.textContent = title;
+  const head = document.createElement("div");
+  head.className = "section-head";
+
+  const heading = document.createElement("h3");
+  heading.className = "section-title";
+  heading.id = "rooms-title";
+  heading.textContent = "Rooms";
 
   const manage = document.createElement("button");
   manage.type = "button";
-  manage.className = "btn btn--primary btn--block";
-  manage.textContent = "Manage Rooms";
+  manage.className = "btn";
+  manage.textContent = "Manage";
   manage.setAttribute("aria-haspopup", "dialog");
+  manage.setAttribute("aria-label", "Manage rooms");
   manage.addEventListener("click", () => openRoomsDialog());
+
+  head.append(heading, manage);
 
   // Derived, never stored: a held room keeps its real state underneath and
   // the marker follows the reservation wherever the free rooms move.
@@ -32,7 +40,7 @@ export function render() {
   const held = arrivingAssignment(state);
   const rooms = sortRooms(state.rooms);
 
-  section.append(heading, manage, rooms.length ? cardGrid(rooms, held) : noRooms());
+  section.append(head, rooms.length ? cardGrid(rooms, held) : noRooms());
   return section;
 }
 

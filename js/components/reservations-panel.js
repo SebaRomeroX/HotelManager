@@ -1,18 +1,20 @@
 import { getState } from "../store.js";
 import { groupReservations } from "../reservations.js";
-import { openIncomingDialog } from "../components/incoming-dialog.js";
-import { openRegisterDialog } from "../components/register-dialog.js";
-import { renderCalendar } from "../components/calendar.js";
+import { openIncomingDialog } from "./incoming-dialog.js";
+import { openRegisterDialog } from "./register-dialog.js";
+import { renderCalendar } from "./calendar.js";
 
-export const title = "Reservations";
-
-export function render() {
+// The planning half of the single screen: availability plus the two sheets
+// that hold every pending booking and all history.
+export function renderReservationsPanel() {
   const section = document.createElement("section");
   section.className = "stack";
+  section.setAttribute("aria-labelledby", "reservations-title");
 
-  const heading = document.createElement("h2");
-  heading.className = "view__title";
-  heading.textContent = title;
+  const heading = document.createElement("h3");
+  heading.className = "section-title";
+  heading.id = "reservations-title";
+  heading.textContent = "Reservations";
 
   const state = getState();
   const rooms = state.rooms ?? [];
@@ -25,9 +27,8 @@ export function render() {
     section.append(noPending(rooms.length > 0, history > 0));
   }
 
-  // The page is the calendar; every pending booking and all history fold into
-  // sheets below it, so the screen answers "who is arriving?" without a list
-  // that grows with the calendar.
+  // Every pending booking and all history fold into sheets, so the screen
+  // answers "who is arriving?" without a list that grows with the calendar.
   const actions = document.createElement("div");
   actions.className = "list-actions";
   actions.append(incomingButton(pending), registerButton(history));

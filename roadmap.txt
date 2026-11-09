@@ -1,7 +1,7 @@
 ================================================================
 HOTEL MANAGER — ROADMAP
 ================================================================
-Last updated: 2026-10-31
+Last updated: 2026-11-09
 Status: specification phase
 
 Structure of this file:
@@ -496,6 +496,22 @@ Newest entries at the bottom.
             for a brand-new state. Counts come from the same
             groupReservations partition as the rows, so cancelling or
             checking in updates both immediately.
+
+2026-11-09  Rooms and Reservations merge into one Hotel Manager screen. The
+            single scroll is rooms first — the operational view — then the
+            month calendar, then Incoming/Register. Rooms lead because the
+            front desk works from the grid; availability is one scroll below,
+            and the two sheets stay in the thumb zone. Section labels are the
+            small uppercase style the old list headings used. Manage moves
+            from a full-width primary button into the Rooms heading row, so
+            the grid stays above the fold at 360px. The tab bar is gone and
+            #/rooms, #/reservations and #/calendar all render the same screen,
+            so saved links keep working without a redirect. The topbar
+            wordmark goes too: the page title now carries the app name and
+            repeating it made the single screen feel like a tab. The view
+            takes over safe-area padding from the old shell. No data, storage
+            or sheet behavior changed; the calendar still repaints only its
+            own block, and every dialog keeps its focus contract.
 
 ================================================================
 4. TODO TASKS
