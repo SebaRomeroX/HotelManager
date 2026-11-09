@@ -1,8 +1,8 @@
 import { getState } from "../store.js";
 import {
   DEFAULT_STATE,
-  roomStateText,
   sortRooms,
+  stateLabel,
   typeLabel,
 } from "../rooms.js";
 import { arrivingAssignment } from "../reservations.js";
@@ -52,9 +52,7 @@ function cardGrid(rooms, held) {
 }
 
 function roomCard(room, arriving) {
-  const stateText = arriving
-    ? `Arriving - ${arriving.hostName}`
-    : roomStateText(room);
+  const stateText = arriving ? "Arriving" : stateLabel(room.state);
 
   // Headings are not valid inside a button, so the card's name is a span; the
   // accessible name is set explicitly below.

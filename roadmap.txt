@@ -526,6 +526,17 @@ Newest entries at the bottom.
             before the state rows. The grid track is minmax(0, 1fr) so a long
             name can never widen the page.
 
+2026-11-09  The compact cards keep the grid. One-line rows were right, but a
+            single column wasted the width and pushed the calendar further
+            down; the same card now sits two-up at 360px (auto-fill from
+            150px). Short states stay beside the room name — "Room 7
+            OCCUPIED" — with a smaller name and a tighter gap so ordinary
+            room numbers still fit on one line. A long state (Needs
+            cleaning, Out of order) wraps under the name instead of
+            squeezing it to an ellipsis; a long room name still truncates.
+            The card shows the base state only; the duration and the
+            arriving host stay in the tap sheet and the accessible name.
+
 ================================================================
 4. TODO TASKS
 ================================================================
