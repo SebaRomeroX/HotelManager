@@ -77,10 +77,6 @@ function roomCard(room, arriving) {
   name.className = "card__name";
   name.textContent = room.name;
 
-  const type = document.createElement("span");
-  type.className = "card__type";
-  type.textContent = typeLabel(room.type);
-
   const state = document.createElement("span");
   state.className = "card__state";
 
@@ -91,7 +87,7 @@ function roomCard(room, arriving) {
   label.textContent = stateText;
 
   state.append(dot, label);
-  card.append(name, type, state);
+  card.append(name, state);
   return card;
 }
 

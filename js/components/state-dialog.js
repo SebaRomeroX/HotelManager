@@ -3,6 +3,7 @@ import {
   ROOM_STATES,
   STAY_MAX_DAYS,
   STAY_MIN_DAYS,
+  roomStateText,
   setRoomState,
   typeLabel,
 } from "../rooms.js";
@@ -123,7 +124,8 @@ dialog.innerHTML = `
   </div>
 `;
 
-const roomLabel = dialog.querySelector("[data-room]");
+const title = dialog.querySelector("#state-dialog-title");
+const roomMeta = dialog.querySelector("[data-room]");
 const arrival = dialog.querySelector("[data-arrival]");
 const arrivalHost = dialog.querySelector("[data-arrival-host]");
 const arrivalMeta = dialog.querySelector("[data-arrival-meta]");
@@ -206,11 +208,14 @@ function render() {
     return;
   }
 
-  roomLabel.textContent = room.name;
-
   // The hold is derived, so it appears and disappears with the assignment —
   // including under this sheet if the store changes while it is open.
   const arriving = arrivingAssignment(getState()).get(activeRoomId);
+
+  title.textContent = room.name;
+  roomMeta.textContent =
+    `${typeLabel(room.type)} · ` +
+    (arriving ? "Arriving" : roomStateText(room));
 
   if (arriving) {
     if (arriving.id !== arrivalId) startArrival(arriving);
@@ -413,6 +418,7 @@ dialog.addEventListener("close", () => {
   resetArrival();
   hideDaysForm();
   delete daysInput.dataset.ready;
+  title.textContent = "Room state";
 });
 
 export function openStateDialog(roomId) {

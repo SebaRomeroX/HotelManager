@@ -513,6 +513,19 @@ Newest entries at the bottom.
             or sheet behavior changed; the calendar still repaints only its
             own block, and every dialog keeps its focus contract.
 
+2026-11-09  Room cards shrink to one-line rows: name left, state right. The
+            old two-up tiles repeated the room type on every card and used
+            four lines for two facts; at 360px a full-width row is easier to
+            scan and keeps more rooms above the fold. The type is still in
+            the accessible name and now lives in the sheet. The state keeps
+            its dot and colour and is allowed 60% of the row, so short states
+            read in full and a long arriving host truncates instead of
+            pushing the room name off. The state sheet title becomes the room
+            name, with a "Small · Occupied - 2 days" line underneath, so the
+            tap confirms exactly which room and state is about to change
+            before the state rows. The grid track is minmax(0, 1fr) so a long
+            name can never widen the page.
+
 ================================================================
 4. TODO TASKS
 ================================================================
