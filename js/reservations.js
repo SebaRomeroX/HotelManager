@@ -4,6 +4,7 @@ import {
   ROOM_TYPES,
   STAY_MAX_DAYS,
   STAY_MIN_DAYS,
+  oosCoversNight,
   setRoomState,
   sortRooms,
   stayExpiry,
@@ -372,12 +373,16 @@ export function removeReservation(state, id, now = new Date()) {
 }
 
 // Can this room serve a booking arriving on arrivalDate? The one availability
-// line, shared by every guard: not out of order, and a live stay must end by
-// the arrival morning's checkout line — 10:00 on D — so a back-to-back stay
-// (A out at 10:00, B in the same day) still counts as free. An occupied room
-// without a timer never frees, so it never serves.
+// line, shared by every guard: not out of order for that night, and a live stay
+// must end by the arrival morning's checkout line — 10:00 on D — so a
+// back-to-back stay (A out at 10:00, B in the same day) still counts as free.
+// An occupied room without a timer never frees, so it never serves. A timed
+// OOS room frees itself on the first night its window no longer covers.
 function roomServes(room, arrivalDate) {
-  if (room.state === "oos") return false;
+  if (room.state === "oos") {
+    const arrival = parseDate(arrivalDate);
+    if (!arrival || oosCoversNight(room, startOfDay(arrival))) return false;
+  }
 
   if (room.state === "occupied") {
     if (!room.stayDays || !room.stayStartedAt) return false;
@@ -527,10 +532,10 @@ function occupiesNight(arrival, days, night) {
 }
 
 // How many rooms could still be sold for this date — the number every
-// calendar cell shows. Per type: rooms not out of order and not held by a
-// live stay, minus the nights not-checked-in bookings cover; clamped at 0 so
-// data written before the guards can never show -1. Checked-in records are
-// skipped: their room's live stay already accounts them.
+// calendar cell shows. Per type: rooms not out of order for that night and not
+// held by a live stay, minus the nights not-checked-in bookings cover; clamped
+// at 0 so data written before the guards can never show -1. Checked-in records
+// are skipped: their room's live stay already accounts them.
 export function availabilityOn(state, isoDate) {
   const night = parseDate(isoDate);
   const rooms = state.rooms ?? [];
@@ -543,7 +548,7 @@ export function availabilityOn(state, isoDate) {
     }
 
     const sellable = owned.filter(
-      (room) => room.state !== "oos" && !stayCoversNight(room, night),
+      (room) => !oosCoversNight(room, night) && !stayCoversNight(room, night),
     ).length;
 
     const booked = reservations.filter((reservation) => {

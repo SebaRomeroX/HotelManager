@@ -2,6 +2,7 @@ import { getState, update } from "./store.js";
 import {
   DAY_BOUNDARY_HOUR,
   nextCleaningStep,
+  nextOosStep,
   reconcileExpiries,
 } from "./rooms.js";
 import {
@@ -50,6 +51,20 @@ function msToNextCleaningStep(now) {
   return best - now.getTime();
 }
 
+// A timed out-of-order room changes its label on day/hour/minute boundaries
+// and then flips back to vacant at the end, so wake for the next change.
+function msToNextOosStep(now) {
+  let best = Infinity;
+
+  for (const room of getState().rooms) {
+    if (room.state !== "oos" || !room.oosUntil) continue;
+    const step = nextOosStep(room.oosUntil, now, room.oosUnit);
+    if (step && step.getTime() < best) best = step.getTime();
+  }
+
+  return best - now.getTime();
+}
+
 function armNext() {
   const now = new Date();
   const ms = Math.max(
@@ -57,6 +72,7 @@ function armNext() {
     Math.min(
       msToWallBoundary(),
       msToNextCleaningStep(now),
+      msToNextOosStep(now),
       // Midnight rolls the sections and opens new arrival windows; a cutoff
       // logs a no-show. Both repaint exactly, not up to a minute late.
       nextReservationBoundary(getState(), now) - now.getTime(),

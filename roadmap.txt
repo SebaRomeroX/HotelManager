@@ -578,6 +578,25 @@ Newest entries at the bottom.
             adjust the booking instead of ending up with a half-saved arrival
             or a room taken from another guest.
 
+2026-11-10  Out of order becomes a timer. Tapping the state opens a small
+            duration form: a whole number of hours or calendar days, or a
+            blank amount for an open-ended marker. Days land on midnight so
+            they line up with the calendar: 1 day blocks the rest of today and
+            frees the room tomorrow; 2 days blocks today and tomorrow. Hours
+            keep their exact clock and can cross midnight, touching both day
+            cells. The room stores oosUntil plus the chosen unit as a display
+            hint, and the state sheet counts the remainder down (hours/minutes
+            or whole days); an open-ended room keeps the plain label. Leaving
+            out of order for any other state clears both fields, and the
+            ticker now wakes on the next day/hour/minute boundary and at the
+            end of the window, where reconcileExpiries flips the room back to
+            Vacant on its own. Calendar availability and reservation guards
+            both ask oosCoversNight, so a room with a 2-hour timer is excluded
+            only from the days it actually covers and becomes bookable again
+            the moment the window ends instead of waiting for a manual state
+            change. Invalid or out-of-range amounts stay in the form with an
+            error and write nothing.
+
 ================================================================
 4. TODO TASKS
 ================================================================

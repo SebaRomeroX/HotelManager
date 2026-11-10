@@ -26,6 +26,11 @@ export const STAY_MIN_DAYS = 1;
 export const STAY_MAX_DAYS = 365;
 export const CLEANING_MINUTES = 60;
 export const CLEANING_STEP_MINUTES = 10;
+// Out-of-order is a timer too: an integer number of hours (up to a year) or
+// calendar days, or no end at all. Days are calendar days: 2 days blocks
+// today and tomorrow, and the room is free again the day after.
+export const OOS_MAX_HOURS = 24 * 365;
+export const OOS_MAX_DAYS = 365;
 
 // The list above is also the ranking: state first, then name, everywhere a
 // room list is rendered.
@@ -84,6 +89,75 @@ export function stayExpiry(stayStartedAt, days) {
   return expiry;
 }
 
+// When an out-of-order timer entered now ends. Days land on midnight so the
+// calendar's day cells line up: 1 day blocks the rest of today and frees the
+// room tomorrow. Null means the amount was not a valid duration.
+export function oosUntilFromDuration(amount, unit, now = new Date()) {
+  const count = Number(amount);
+  const max = unit === "days" ? OOS_MAX_DAYS : OOS_MAX_HOURS;
+  if (!Number.isInteger(count) || count < 1 || count > max) return null;
+
+  if (unit === "days") {
+    const until = startOfDay(now);
+    until.setDate(until.getDate() + count);
+    return until;
+  }
+
+  return new Date(now.getTime() + count * 3_600_000);
+}
+
+// Does an out-of-order window cover the night that starts at `night`? An
+// open-ended marker covers everything; otherwise the room is unavailable
+// until its timer runs out. `night` is a local midnight, so an hours-long
+// window that crosses midnight correctly touches both day cells.
+export function oosCoversNight(room, night) {
+  if (room.state !== "oos") return false;
+  if (!room.oosUntil) return true;
+
+  const until = new Date(room.oosUntil);
+  if (Number.isNaN(until.getTime())) return true;
+  return until > night;
+}
+
+// Hours are counted in hours even when a day or more is left; only a days
+// duration counts in days, and roomStateText handles that case itself.
+export function oosRemainingLabel(ms) {
+  if (ms >= 3_600_000) {
+    const hours = Math.ceil(ms / 3_600_000);
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  const minutes = Math.max(1, Math.ceil(ms / 60_000));
+  return `${minutes} min`;
+}
+
+// The next moment the OOS label changes: a day, hour or minute boundary,
+// whichever unit the timer was entered in. Mirrors nextCleaningStep so the
+// ticker can repaint exactly on the change.
+export function nextOosStep(oosUntil, now, unit = "hours") {
+  const until = new Date(oosUntil).getTime();
+  if (Number.isNaN(until)) return null;
+
+  const left = until - now.getTime();
+  if (left <= 0) return new Date(now);
+
+  let stepMs;
+  if (unit === "days") {
+    // Day counts change at local midnight, the same line the calendar uses.
+    const midnight = startOfDay(now);
+    midnight.setDate(midnight.getDate() + 1);
+    stepMs = Math.min(midnight.getTime(), until) - now.getTime();
+  } else if (left >= 3_600_000) {
+    // Hour timers tick hourly however long they run.
+    const hours = Math.ceil(left / 3_600_000);
+    stepMs = left - (hours - 1) * 3_600_000;
+  } else {
+    const minutes = Math.ceil(left / 60_000);
+    stepMs = left - (minutes - 1) * 60_000;
+  }
+
+  return new Date(now.getTime() + stepMs);
+}
+
 // Whole days left before the stay expires. The arrival day's own 10:00 never
 // counts, so arriving at 08:00 does not burn a day two hours later; today's
 // boundary only counts once it has actually passed.
@@ -123,6 +197,25 @@ export function roomStateText(room, now = new Date()) {
     return `${label} - ${left} min`;
   }
 
+  if (room.state === "oos" && room.oosUntil) {
+    const until = new Date(room.oosUntil);
+    if (!Number.isNaN(until.getTime())) {
+      const left = until.getTime() - now.getTime();
+      // Expired but not yet reconciled: preview what the flip will say.
+      if (left <= 0) return stateLabel("vacant");
+      if (room.oosUnit === "days") {
+        // Count the day cells still blocked, not 24-hour periods: at 00:30 on
+        // the second blocked day only that day remains, so the label is "1 day".
+        const daysLeft = Math.max(
+          1,
+          Math.ceil((until.getTime() - startOfDay(now).getTime()) / 86_400_000),
+        );
+        return `${label} - ${daysLeft} ${daysLeft === 1 ? "day" : "days"}`;
+      }
+      return `${label} - ${oosRemainingLabel(left)}`;
+    }
+  }
+
   return label;
 }
 
@@ -151,10 +244,15 @@ export function nextCleaningStep(cleaningStartedAt, now) {
 }
 
 // The only writer of a room's state and its timer fields. At most one timer is
-// ever live: occupied sets stay* and drops cleaningStartedAt, cleaning does the
-// reverse, and every other state clears both so a stale countdown cannot
-// resurface.
-export function setRoomState(state, id, nextState, { days, now = new Date() } = {}) {
+// ever live: occupied sets stay*, cleaning sets cleaningStartedAt, out of order
+// sets oosUntil (or leaves it open-ended), and every other state clears all of
+// them so a stale countdown cannot resurface.
+export function setRoomState(
+  state,
+  id,
+  nextState,
+  { days, oosUntil, oosUnit, now = new Date() } = {},
+) {
   if (nextState === "occupied") {
     const count = Number(days);
     if (!Number.isInteger(count) || count < STAY_MIN_DAYS || count > STAY_MAX_DAYS) {
@@ -166,6 +264,8 @@ export function setRoomState(state, id, nextState, { days, now = new Date() } = 
       stayDays: count,
       stayStartedAt: now.toISOString(),
       cleaningStartedAt: undefined,
+      oosUntil: undefined,
+      oosUnit: undefined,
     });
   }
 
@@ -175,6 +275,28 @@ export function setRoomState(state, id, nextState, { days, now = new Date() } = 
       stayDays: undefined,
       stayStartedAt: undefined,
       cleaningStartedAt: now.toISOString(),
+      oosUntil: undefined,
+      oosUnit: undefined,
+    });
+  }
+
+  if (nextState === "oos") {
+    let until;
+    if (oosUntil) {
+      const parsed = new Date(oosUntil);
+      if (Number.isNaN(parsed.getTime())) return state;
+      until = parsed.toISOString();
+    }
+
+    return updateRoom(state, id, {
+      state: nextState,
+      stayDays: undefined,
+      stayStartedAt: undefined,
+      cleaningStartedAt: undefined,
+      oosUntil: until,
+      // The unit is only a display hint for the countdown; an open-ended
+      // marker has no countdown and therefore no unit.
+      oosUnit: until ? (oosUnit === "days" ? "days" : "hours") : undefined,
     });
   }
 
@@ -183,6 +305,8 @@ export function setRoomState(state, id, nextState, { days, now = new Date() } = 
     stayDays: undefined,
     stayStartedAt: undefined,
     cleaningStartedAt: undefined,
+    oosUntil: undefined,
+    oosUnit: undefined,
   });
 }
 
@@ -197,6 +321,12 @@ function expiredStateFor(room, now) {
 
   if (room.state === "cleaning" && room.cleaningStartedAt) {
     return cleaningMinutesLeft(now, room.cleaningStartedAt) > 0 ? null : "vacant";
+  }
+
+  if (room.state === "oos" && room.oosUntil) {
+    const until = new Date(room.oosUntil);
+    if (Number.isNaN(until.getTime())) return null;
+    return now < until ? null : "vacant";
   }
 
   return null;
@@ -218,6 +348,8 @@ export function reconcileExpiries(state, now = new Date()) {
       stayDays: undefined,
       stayStartedAt: undefined,
       cleaningStartedAt: undefined,
+      oosUntil: undefined,
+      oosUnit: undefined,
       updatedAt: now.toISOString(),
     };
   });

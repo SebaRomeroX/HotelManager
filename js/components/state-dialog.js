@@ -1,8 +1,11 @@
 import { getState, subscribe, update } from "../store.js";
 import {
+  OOS_MAX_DAYS,
+  OOS_MAX_HOURS,
   ROOM_STATES,
   STAY_MAX_DAYS,
   STAY_MIN_DAYS,
+  oosUntilFromDuration,
   roomStateText,
   setRoomState,
   typeLabel,
@@ -121,6 +124,47 @@ dialog.innerHTML = `
         <button class="btn" type="button" data-days-cancel>Cancel</button>
       </div>
     </form>
+
+    <form class="oos-form" data-oos novalidate hidden>
+      <div class="field">
+        <label class="field__label" for="oos-amount">Duration</label>
+        <input
+          class="input input--days"
+          id="oos-amount"
+          name="amount"
+          type="number"
+          min="1"
+          max="${OOS_MAX_HOURS}"
+          step="1"
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="No end"
+        >
+      </div>
+
+      <fieldset class="field field--group">
+        <legend class="field__label">Unit</legend>
+        <div class="segmented">
+          <label class="segmented__option">
+            <input type="radio" name="oosUnit" value="hours" checked>
+            <span>Hours</span>
+          </label>
+          <label class="segmented__option">
+            <input type="radio" name="oosUnit" value="days">
+            <span>Days</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <p class="hint">Leave the amount blank for an open-ended out of order.</p>
+
+      <p class="error" data-oos-error role="alert" hidden></p>
+
+      <div class="form__actions">
+        <button class="btn btn--primary" type="submit">Set out of order</button>
+        <button class="btn" type="button" data-oos-cancel>Cancel</button>
+      </div>
+    </form>
   </div>
 `;
 
@@ -148,6 +192,10 @@ const daysForm = dialog.querySelector("[data-days]");
 const daysInput = dialog.querySelector("#stay-days");
 const daysError = dialog.querySelector("[data-days-error]");
 const daysCancel = dialog.querySelector("[data-days-cancel]");
+const oosForm = dialog.querySelector("[data-oos]");
+const oosAmount = dialog.querySelector("#oos-amount");
+const oosError = dialog.querySelector("[data-oos-error]");
+const oosCancel = dialog.querySelector("[data-oos-cancel]");
 
 let activeRoomId = null;
 // The card that opened the sheet, so focus can go back to the same place when
@@ -228,6 +276,7 @@ function render() {
     // in, or cancel and release the room. State edits would be a detour.
     states.hidden = true;
     hideDaysForm();
+    hideOosForm();
     return;
   }
 
@@ -256,6 +305,17 @@ function hideDaysForm() {
   daysForm.hidden = true;
   daysError.hidden = true;
   daysError.textContent = "";
+}
+
+function hideOosForm() {
+  oosForm.hidden = true;
+  oosError.hidden = true;
+  oosError.textContent = "";
+}
+
+function syncOosMax() {
+  const unit = oosForm.elements.oosUnit.value;
+  oosAmount.max = String(unit === "days" ? OOS_MAX_DAYS : OOS_MAX_HOURS);
 }
 
 function focusCard(roomId) {
@@ -294,17 +354,68 @@ function showDaysForm(room) {
   daysInput.select();
 }
 
+function showOosForm(room) {
+  oosForm.hidden = false;
+  oosError.hidden = true;
+  oosError.textContent = "";
+
+  // Only seed on first reveal: re-tapping Out of order must not wipe what was
+  // typed, but an existing timed marker opens with its remaining duration.
+  if (!oosAmount.dataset.ready) {
+    oosAmount.value = "";
+    oosForm.elements.oosUnit.value = "hours";
+
+    if (room.state === "oos" && room.oosUntil) {
+      const left = new Date(room.oosUntil).getTime() - Date.now();
+      if (left > 0) {
+        const unit =
+          room.oosUnit === "days" || room.oosUnit === "hours"
+            ? room.oosUnit
+            : left >= 86_400_000
+              ? "days"
+              : "hours";
+        const useDays = unit === "days";
+        oosForm.elements.oosUnit.value = unit;
+        const amount = useDays
+          ? Math.ceil(left / 86_400_000)
+          : Math.ceil(left / 3_600_000);
+        oosAmount.value = String(amount);
+      }
+    }
+
+    oosAmount.dataset.ready = "true";
+  }
+
+  syncOosMax();
+  oosAmount.focus();
+  oosAmount.select();
+}
+
 for (const row of rows) {
   row.addEventListener("click", () => {
     const roomId = activeRoomId;
     if (!roomId) return;
 
+    const room = getState().rooms.find((candidate) => candidate.id === roomId);
+
     if (row.dataset.value === "occupied") {
-      const room = getState().rooms.find((candidate) => candidate.id === roomId);
-      if (room) showDaysForm(room);
+      if (room) {
+        hideOosForm();
+        showDaysForm(room);
+      }
       return;
     }
 
+    if (row.dataset.value === "oos") {
+      if (room) {
+        hideDaysForm();
+        showOosForm(room);
+      }
+      return;
+    }
+
+    hideDaysForm();
+    hideOosForm();
     commit(roomId, row.dataset.value);
   });
 }
@@ -426,6 +537,43 @@ daysCancel.addEventListener("click", () => {
   dialog.querySelector('.state-row[data-value="occupied"]').focus();
 });
 
+oosForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+
+  const roomId = activeRoomId;
+  if (!roomId) return;
+
+  const raw = oosAmount.value.trim();
+  // A blank amount is the open-ended marker: the room stays out of order
+  // until the desk clears it from the state list.
+  if (raw === "") {
+    commit(roomId, "oos", { oosUntil: undefined });
+    return;
+  }
+
+  const unit = oosForm.elements.oosUnit.value;
+  const until = oosUntilFromDuration(raw, unit);
+  if (!until) {
+    oosError.textContent =
+      unit === "days"
+        ? `Enter a whole number of days between 1 and ${OOS_MAX_DAYS}.`
+        : `Enter a whole number of hours between 1 and ${OOS_MAX_HOURS}.`;
+    oosError.hidden = false;
+    oosAmount.focus();
+    oosAmount.select();
+    return;
+  }
+
+  commit(roomId, "oos", { oosUntil: until.toISOString(), oosUnit: unit });
+});
+
+oosForm.addEventListener("change", syncOosMax);
+
+oosCancel.addEventListener("click", () => {
+  hideOosForm();
+  dialog.querySelector('.state-row[data-value="oos"]').focus();
+});
+
 dialog.querySelector("[data-close]").addEventListener("click", () => dialog.close());
 
 // A click on the backdrop lands on the dialog element itself.
@@ -437,7 +585,9 @@ dialog.addEventListener("close", () => {
   activeRoomId = null;
   resetArrival();
   hideDaysForm();
+  hideOosForm();
   delete daysInput.dataset.ready;
+  delete oosAmount.dataset.ready;
   title.textContent = "Room state";
 });
 
@@ -446,7 +596,9 @@ export function openStateDialog(roomId, opener = null) {
   lastOpener = opener;
   resetArrival();
   hideDaysForm();
+  hideOosForm();
   delete daysInput.dataset.ready;
+  delete oosAmount.dataset.ready;
   if (!dialog.open) dialog.showModal();
   render();
   // The host is standing at the desk: the sheet's first action is the one

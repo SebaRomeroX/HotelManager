@@ -562,7 +562,8 @@ p {
   display: none;
 }
 
-.days-form {
+.days-form,
+.oos-form {
   display: grid;
   gap: var(--space-3);
   padding-top: var(--space-4);
@@ -570,7 +571,8 @@ p {
 }
 
 /* Author display beats the UA rule behind the hidden attribute. */
-.days-form[hidden] {
+.days-form[hidden],
+.oos-form[hidden] {
   display: none;
 }
 
