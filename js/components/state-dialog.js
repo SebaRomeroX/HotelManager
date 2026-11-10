@@ -235,6 +235,14 @@ function render() {
   arrival.hidden = true;
   states.hidden = false;
 
+  // Occupancy is a check-in outcome now: only an already-occupied room can
+  // adjust its own stay. A vacant room has no path back to occupied here.
+  const occupiedRow = rows.find((row) => row.dataset.value === "occupied");
+  if (occupiedRow) occupiedRow.hidden = room.state !== "occupied";
+  // A stay that expired while this sheet was open must not leave a stale days
+  // form that could re-occupy the room.
+  if (room.state !== "occupied") hideDaysForm();
+
   for (const row of rows) {
     if (row.dataset.value === room.state) {
       row.setAttribute("aria-current", "true");

@@ -556,6 +556,28 @@ Newest entries at the bottom.
             140px and dialog cards use tighter inline padding so today's grid
             still holds two columns at 360px without clipping a state label.
 
+2026-11-10  Occupancy becomes a check-in outcome. A vacant room can no longer
+            be moved straight to occupied from the state sheet: the Occupied
+            row only exists when the room is already occupied, where it stays
+            as the days-adjustment form for the live stay. Registering a host
+            now always starts from New reservation. When the form's Arrives
+            value is today (or still inside the night-of window), the sheet
+            offers two explicit actions: Save as arriving keeps the booking
+            pending and lets the derived hold paint the room as Arriving;
+            Check in now saves and immediately runs the normal check-in,
+            moving the booking to the register and the room into a real
+            occupied stay. Future dates keep the single Add reservation
+            action, and an edit whose date moves to today reveals both
+            options without reopening the sheet. The arrival set follows the
+            date input, not the stored booking, so the two choices cannot
+            drift from what is about to be saved. Check in now preflights the
+            form and builds the save in a draft state: validation, room
+            availability, the derived hold and the reservation conflict are
+            all checked before anything is written. A refused check-in leaves
+            the sheet open with the reason and writes nothing, so the desk can
+            adjust the booking instead of ending up with a half-saved arrival
+            or a room taken from another guest.
+
 ================================================================
 4. TODO TASKS
 ================================================================

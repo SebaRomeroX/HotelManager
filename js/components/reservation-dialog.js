@@ -28,13 +28,6 @@ dialog.innerHTML = `
 
   <div class="dialog__body">
     <form class="form" novalidate>
-      <div class="checkin" data-checkin hidden>
-        <button class="btn btn--primary btn--block" type="button" data-checkin-btn>
-          Check in
-        </button>
-        <p class="error" data-checkin-error role="alert" hidden></p>
-      </div>
-
       <fieldset class="field field--group">
         <legend class="field__label">Room type</legend>
         <div class="segmented">
@@ -97,6 +90,13 @@ dialog.innerHTML = `
       <button class="btn btn--primary btn--block" type="submit" disabled>
         Add reservation
       </button>
+
+      <div class="checkin" data-checkin hidden>
+        <button class="btn btn--block" type="button" data-checkin-btn>
+          Check in now
+        </button>
+        <p class="error" data-checkin-error role="alert" hidden></p>
+      </div>
 
       <div class="form__actions" data-edit-actions hidden>
         <button class="btn" type="button" data-edit-cancel>Cancel</button>
@@ -184,6 +184,11 @@ function resetCancelConfirm() {
   cancelResButton.classList.remove("btn--armed");
 }
 
+function clearCheckinError() {
+  checkinError.hidden = true;
+  checkinError.textContent = "";
+}
+
 // Checked-in and past bookings are history: everything shows as text and only
 // the two-step cancel stays live.
 function readOnly() {
@@ -195,9 +200,6 @@ function syncMode() {
   const editing = editingId !== null;
   const readonly = readOnly();
   const reservation = editing ? findEditing() : undefined;
-  // Visible only while the host can still arrive: inside the window, not yet
-  // checked in — tomorrow's bookings get no button until their day starts.
-  const arriving = reservation !== undefined && isArrivingNow(reservation);
 
   title.textContent = !editing
     ? "New reservation"
@@ -206,7 +208,6 @@ function syncMode() {
         ? "Checked-in reservation"
         : "Past reservation"
       : "Edit reservation";
-  addButton.textContent = editing ? "Save changes" : "Add reservation";
   actions.hidden = !editing;
   actions.classList.toggle("form__actions--single", readonly);
   editCancelButton.hidden = readonly;
@@ -214,9 +215,6 @@ function syncMode() {
   nameField.hidden = editing;
   hostHint.hidden = !editing;
   metaHint.hidden = !readonly;
-  checkinBlock.hidden = !arriving;
-  checkinError.hidden = true;
-  checkinError.textContent = "";
 
   // Read-only hides the whole form: static lines instead of inputs.
   typeField.hidden = readonly;
@@ -229,7 +227,31 @@ function syncMode() {
     if (readonly && reservation) metaHint.textContent = reservationMeta(reservation);
   }
 
+  syncArrivalActions();
   resetCancelConfirm();
+}
+
+// The arrival choice follows the date in the form, not the stored booking: an
+// edit whose date moves to today must offer check-in without reopening the
+// sheet. Saving always keeps the booking pending; Check in now saves and then
+// runs the same check-in the register uses.
+function syncArrivalActions() {
+  const arriving =
+    !readOnly() && isArrivingNow({ arrivalDate: dateInput.value });
+
+  addButton.textContent =
+    editingId === null
+      ? arriving
+        ? "Save as arriving"
+        : "Add reservation"
+      : "Save changes";
+  checkinBlock.hidden = !arriving;
+  // A new booking cannot be checked in before it is valid enough to save.
+  checkinButton.disabled = editingId === null && addButton.disabled;
+
+  if (!arriving) {
+    clearCheckinError();
+  }
 }
 
 function findEditing() {
@@ -248,6 +270,7 @@ function todayISO() {
 function resetForm() {
   form.reset();
   setError(null);
+  clearCheckinError();
 
   // A reservation books a night to come, so the picker opens on today and
   // refuses anything earlier at both the input and the validator.
@@ -272,6 +295,7 @@ function prefill() {
   dateInput.value = reservation.arrivalDate;
   daysInput.value = String(reservation.days);
   addButton.disabled = false;
+  syncArrivalActions();
 }
 
 function readValues() {
@@ -287,10 +311,15 @@ function readValues() {
 
 form.addEventListener("change", (event) => {
   addButton.disabled = form.elements.roomType.value === "";
+  syncArrivalActions();
+  clearCheckinError();
   clearErrorFor(event.target);
 });
 
-form.addEventListener("input", (event) => clearErrorFor(event.target));
+form.addEventListener("input", (event) => {
+  clearCheckinError();
+  clearErrorFor(event.target);
+});
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -337,22 +366,73 @@ form.addEventListener("submit", (event) => {
 editCancelButton.addEventListener("click", () => dialog.close());
 
 checkinButton.addEventListener("click", () => {
-  const id = editingId;
-  if (id === null) return;
+  if (readOnly()) return;
 
-  const reservation = findEditing();
-  if (!reservation || !isArrivingNow(reservation)) {
+  clearCheckinError();
+
+  const values = readValues();
+  const before = getState();
+  const currentReservation = editingId === null ? undefined : findEditing();
+  const problem = reservationError(values, undefined, {
+    // An unchanged date may sit inside the straddling no-show window.
+    currentDate: currentReservation?.arrivalDate,
+  });
+  if (problem) {
+    setError(problem);
+    focusField(problem.field);
+    return;
+  }
+
+  if (!isArrivingNow({ arrivalDate: values.arrivalDate })) {
     // The 04:00 cutoff passed with the sheet open.
     checkinError.textContent = "The arrival window has passed.";
     checkinError.hidden = false;
     return;
   }
 
-  const before = getState();
+  const availability = reservationAvailabilityError(before, values, {
+    current: currentReservation,
+  });
+  if (availability) {
+    setError(availability);
+    focusField(availability.field);
+    return;
+  }
 
-  // Which room holds this booking, if any — the domain re-derives it, this is
-  // only to pick the right message when something is in the way.
-  const heldRoomId = [...arrivingAssignment(before)].find(
+  setError(null);
+
+  // Build the save in a draft so a refused check-in writes nothing: the form
+  // stays exactly as the desk left it and no half-saved booking appears.
+  const now = new Date();
+  let draft;
+  let id = editingId;
+
+  if (editingId === null) {
+    draft = addReservation(before, values, now);
+    const known = new Set((before.reservations ?? []).map((r) => r.id));
+    id = (draft.reservations ?? []).find((r) => !known.has(r.id))?.id ?? null;
+  } else {
+    draft = updateReservation(before, editingId, values, now);
+  }
+
+  if (draft === before || id === null) {
+    checkinError.textContent = "This reservation could not be saved.";
+    checkinError.hidden = false;
+    return;
+  }
+
+  const reservation = (draft.reservations ?? []).find(
+    (candidate) => candidate.id === id,
+  );
+  if (!reservation) {
+    checkinError.textContent = "This reservation could not be saved.";
+    checkinError.hidden = false;
+    return;
+  }
+
+  // Which room holds this booking in the draft — the domain re-derives it,
+  // this is only to pick the right message when something is in the way.
+  const heldRoomId = [...arrivingAssignment(draft, now)].find(
     ([, held]) => held.id === id,
   )?.[0];
 
@@ -363,10 +443,10 @@ checkinButton.addEventListener("click", () => {
   }
 
   const conflict = occupancyConflict(
-    before,
+    draft,
     heldRoomId,
     reservation.days,
-    new Date(),
+    now,
     { exceptId: id },
   );
   if (conflict) {
@@ -377,9 +457,9 @@ checkinButton.addEventListener("click", () => {
     return;
   }
 
-  const after = checkInReservation(before, id);
+  const after = checkInReservation(draft, id, now);
 
-  if (after === before) {
+  if (after === draft) {
     // Belt: the domain refused for one of its own reasons.
     checkinError.textContent = `No free ${typeLabel(reservation.roomType)} room right now.`;
     checkinError.hidden = false;
@@ -464,12 +544,12 @@ export function openReservationDialog(reservationId = null, options = {}) {
     prefill();
   }
 
+  syncArrivalActions();
   dialog.showModal();
   if (editingId === null) {
     nameInput.focus();
   } else if (!readonly) {
-    const reservation = findEditing();
-    if (reservation && isArrivingNow(reservation)) {
+    if (!checkinBlock.hidden) {
       // The host is standing at the desk: the sheet's first action is the one
       // they came for.
       checkinButton.focus();

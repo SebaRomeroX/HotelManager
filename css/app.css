@@ -450,6 +450,12 @@ p {
   display: none;
 }
 
+/* Occupancy is reachable only through check-in, but the row still exists in
+   the sheet for already-occupied rooms. */
+.state-row[hidden] {
+  display: none;
+}
+
 .state-row {
   display: flex;
   align-items: center;
