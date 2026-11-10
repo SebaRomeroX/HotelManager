@@ -328,7 +328,7 @@ p {
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: var(--space-2);
 }
 
@@ -385,6 +385,12 @@ p {
 .card:hover,
 .card:active {
   background: var(--surface-raised);
+}
+
+/* The today sheet's grid is narrower than the main view; tighter inline
+   padding keeps a full state label on its own line at 360px. */
+.dialog .card {
+  padding-inline: var(--space-1);
 }
 
 .card__name {

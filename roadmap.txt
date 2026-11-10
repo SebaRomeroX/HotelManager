@@ -537,6 +537,25 @@ Newest entries at the bottom.
             The card shows the base state only; the duration and the
             arriving host stay in the tap sheet and the accessible name.
 
+2026-11-09  Vacant rooms leave the main grid; today's calendar cell becomes
+            the full room inventory. The main grid now keeps only rooms that
+            need attention — occupied, cleaning, dirty, out of order — plus
+            any vacant room held by an arriving booking, because that room is
+            operationally active even though its stored state is vacant. When
+            every room is vacant the grid says so and points at today's date
+            instead of leaving a blank section. Tapping today opens the day
+            sheet in room mode: the same compact cards for every room,
+            vacant included, under the existing free-room summary and above
+            New reservation. Other dates keep the per-type availability
+            breakdown. Both grids now share one card builder, so a room can
+            never look different depending on where it is rendered. A state
+            sheet opened from the today sheet stacks on top, and after a
+            change focus returns to the refreshed card in that sheet; if the
+            room became vacant and dropped out of the main grid, focus falls
+            back to Manage rather than being lost. The card minimum drops to
+            140px and dialog cards use tighter inline padding so today's grid
+            still holds two columns at 360px without clipping a state label.
+
 ================================================================
 4. TODO TASKS
 ================================================================

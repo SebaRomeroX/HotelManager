@@ -150,6 +150,9 @@ const daysError = dialog.querySelector("[data-days-error]");
 const daysCancel = dialog.querySelector("[data-days-cancel]");
 
 let activeRoomId = null;
+// The card that opened the sheet, so focus can go back to the same place when
+// the sheet is stacked over the today grid.
+let lastOpener = null;
 // Arrival sheet state: the booking being acted on, whether its details are
 // expanded, and whether Cancel has been armed.
 let arrivalId = null;
@@ -249,8 +252,17 @@ function hideDaysForm() {
 
 function focusCard(roomId) {
   // The view repainted during update(), so the card that opened this sheet is
-  // detached and the browser dropped focus to <body>. Put it back.
-  document.querySelector(`.card[data-id="${roomId}"]`)?.focus();
+  // detached and the browser dropped focus to <body>. Put it back where the
+  // desk was: the today sheet if it is still open, otherwise the main grid.
+  const opener = lastOpener;
+  lastOpener = null;
+  const target =
+    (opener?.isConnected && opener) ||
+    document.querySelector(`dialog[open] .card[data-id="${roomId}"]`) ||
+    document.querySelector(`.card[data-id="${roomId}"]`) ||
+    // The room may have become vacant and dropped out of the main grid.
+    document.querySelector('[aria-label="Manage rooms"]');
+  target?.focus();
 }
 
 function commit(roomId, nextState, options) {
@@ -421,8 +433,9 @@ dialog.addEventListener("close", () => {
   title.textContent = "Room state";
 });
 
-export function openStateDialog(roomId) {
+export function openStateDialog(roomId, opener = null) {
   activeRoomId = roomId;
+  lastOpener = opener;
   resetArrival();
   hideDaysForm();
   delete daysInput.dataset.ready;

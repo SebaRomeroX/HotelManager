@@ -1,6 +1,12 @@
 import { getState, subscribe } from "../store.js";
-import { typeLabel } from "../rooms.js";
-import { availabilityOn, formatDate, parseDate } from "../reservations.js";
+import { sortRooms, typeLabel } from "../rooms.js";
+import {
+  arrivingAssignment,
+  availabilityOn,
+  formatDate,
+  parseDate,
+} from "../reservations.js";
+import { roomCardGrid } from "./room-card.js";
 import { openReservationDialog } from "./reservation-dialog.js";
 
 const WEEKDAYS = [
@@ -20,7 +26,7 @@ dialog.innerHTML = `
 
   <div class="dialog__body">
     <p class="hint" data-summary></p>
-    <ul class="avail-list" data-list></ul>
+    <div data-body></div>
     <button class="btn btn--primary btn--block" type="button" data-book>
       New reservation
     </button>
@@ -29,7 +35,7 @@ dialog.innerHTML = `
 
 const title = dialog.querySelector("[data-title]");
 const summary = dialog.querySelector("[data-summary]");
-const list = dialog.querySelector("[data-list]");
+const body = dialog.querySelector("[data-body]");
 const bookButton = dialog.querySelector("[data-book]");
 
 // The date this sheet is showing — transient UI, not store state.
@@ -50,25 +56,52 @@ function refresh() {
   const date = parseDate(isoDate);
   if (!date) return;
 
-  const { free, total, byType } = availabilityOn(getState(), isoDate);
+  const today = isoDate === todayISO();
+  const state = getState();
+  const { free, total, byType } = availabilityOn(state, isoDate);
 
-  title.textContent = `${WEEKDAYS[date.getDay()]}, ${formatDate(isoDate)}`;
+  title.textContent = today
+    ? `Today · ${formatDate(isoDate)}`
+    : `${WEEKDAYS[date.getDay()]}, ${formatDate(isoDate)}`;
   summary.textContent = `${free} of ${total} rooms free`;
-  // Types nobody owns are noise in a breakdown of a night's inventory.
-  list.replaceChildren(
-    ...byType
-      .filter((entry) => entry.total > 0)
-      .map((entry) => {
-        const item = document.createElement("li");
-        item.className = "avail-row";
-        item.textContent =
-          `${typeLabel(entry.type)} · ${entry.free} of ${entry.total} free`;
-        return item;
-      }),
-  );
+
+  // Today is the full room inventory: the main grid hides vacant rooms, so
+  // this is where the desk finds and changes them. Other dates stay a
+  // per-type availability breakdown.
+  if (today) {
+    const rooms = sortRooms(state.rooms ?? []);
+    body.replaceChildren(
+      rooms.length
+        ? roomCardGrid(rooms, arrivingAssignment(state))
+        : noRooms(),
+    );
+  } else {
+    const list = document.createElement("ul");
+    list.className = "avail-list";
+    // Types nobody owns are noise in a breakdown of a night's inventory.
+    list.append(
+      ...byType
+        .filter((entry) => entry.total > 0)
+        .map((entry) => {
+          const item = document.createElement("li");
+          item.className = "avail-row";
+          item.textContent =
+            `${typeLabel(entry.type)} · ${entry.free} of ${entry.total} free`;
+          return item;
+        }),
+    );
+    body.replaceChildren(list);
+  }
 
   // A past night cannot be booked; the reservation sheet would refuse it.
   bookButton.hidden = isoDate < todayISO();
+}
+
+function noRooms() {
+  const empty = document.createElement("p");
+  empty.className = "empty";
+  empty.textContent = "No rooms yet.";
+  return empty;
 }
 
 bookButton.addEventListener("click", () => {

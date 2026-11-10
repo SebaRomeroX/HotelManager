@@ -1,16 +1,12 @@
 import { getState } from "../store.js";
-import {
-  DEFAULT_STATE,
-  sortRooms,
-  stateLabel,
-  typeLabel,
-} from "../rooms.js";
+import { sortRooms } from "../rooms.js";
 import { arrivingAssignment } from "../reservations.js";
 import { openRoomsDialog } from "./rooms-dialog.js";
-import { openStateDialog } from "./state-dialog.js";
+import { roomCardGrid } from "./room-card.js";
 
-// The operational half of the single screen: every room as a tappable card,
-// with today's arriving booking painted over its real state.
+// The operational half of the single screen: the rooms that need attention as
+// tappable cards, with today's arriving booking painted over its real state.
+// Vacant rooms are hidden here because the today sheet is the full inventory.
 export function renderRoomGrid() {
   const section = document.createElement("section");
   section.className = "stack";
@@ -39,59 +35,32 @@ export function renderRoomGrid() {
   const state = getState();
   const held = arrivingAssignment(state);
   const rooms = sortRooms(state.rooms);
+  // A held room is vacant underneath but operationally active, so it stays.
+  const active = rooms.filter(
+    (room) => room.state !== "vacant" || held.has(room.id),
+  );
 
-  section.append(head, rooms.length ? cardGrid(rooms, held) : noRooms());
+  section.append(head, gridContent(rooms.length, active, held));
   return section;
 }
 
-function cardGrid(rooms, held) {
-  const grid = document.createElement("div");
-  grid.className = "card-grid";
-  grid.append(...rooms.map((room) => roomCard(room, held.get(room.id))));
-  return grid;
-}
-
-function roomCard(room, arriving) {
-  const stateText = arriving ? "Arriving" : stateLabel(room.state);
-
-  // Headings are not valid inside a button, so the card's name is a span; the
-  // accessible name is set explicitly below.
-  const card = document.createElement("button");
-  card.type = "button";
-  card.className =
-    `card card--${room.state ?? DEFAULT_STATE}` +
-    (arriving ? " card--arriving" : "");
-  card.dataset.id = room.id;
-  card.setAttribute(
-    "aria-label",
-    arriving
-      ? `${room.name}, ${typeLabel(room.type)}, Arriving for ` +
-          `${arriving.hostName} — check in`
-      : `${room.name}, ${typeLabel(room.type)}, ${stateText} — set state`,
-  );
-  card.addEventListener("click", () => openStateDialog(room.id));
-
-  const name = document.createElement("span");
-  name.className = "card__name";
-  name.textContent = room.name;
-
-  const state = document.createElement("span");
-  state.className = "card__state";
-
-  const dot = document.createElement("span");
-  dot.className = "state-dot";
-
-  const label = document.createElement("span");
-  label.textContent = stateText;
-
-  state.append(dot, label);
-  card.append(name, state);
-  return card;
+function gridContent(total, active, held) {
+  if (total === 0) return noRooms();
+  if (active.length === 0) return allVacant();
+  return roomCardGrid(active, held);
 }
 
 function noRooms() {
   const empty = document.createElement("p");
   empty.className = "empty";
   empty.textContent = "No rooms yet.";
+  return empty;
+}
+
+function allVacant() {
+  const empty = document.createElement("p");
+  empty.className = "empty";
+  empty.textContent =
+    "All rooms are vacant — tap today's date in the calendar.";
   return empty;
 }

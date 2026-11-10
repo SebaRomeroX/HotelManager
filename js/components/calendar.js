@@ -148,7 +148,8 @@ function dayCell(view, day, today) {
   cell.type = "button";
   cell.className = "cal-cell";
   cell.dataset.date = iso;
-  if (iso === today) cell.classList.add("cal-cell--today");
+  const isToday = iso === today;
+  if (isToday) cell.classList.add("cal-cell--today");
   if (iso < today) cell.classList.add("cal-cell--past");
   if (free === 0) {
     cell.classList.add("cal-cell--full");
@@ -159,7 +160,11 @@ function dayCell(view, day, today) {
   }
   cell.setAttribute(
     "aria-label",
-    `${MONTHS[view.month]} ${day}, ${free} room${free === 1 ? "" : "s"} free — view details`,
+    isToday
+      ? `Today, ${MONTHS[view.month]} ${day}, ${free} ` +
+          `room${free === 1 ? "" : "s"} free — view room states`
+      : `${MONTHS[view.month]} ${day}, ${free} ` +
+          `room${free === 1 ? "" : "s"} free — view details`,
   );
   cell.addEventListener("click", () => openAvailabilityDialog(iso, cell));
 
