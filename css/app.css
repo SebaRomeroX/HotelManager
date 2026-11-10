@@ -328,8 +328,14 @@ p {
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: var(--space-2);
+}
+
+/* The today sheet is narrower than the main view and still needs two columns
+   at 360px. */
+.dialog .card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
 }
 
 .card--vacant,
