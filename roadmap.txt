@@ -1,7 +1,7 @@
 ================================================================
 HOTEL MANAGER — ROADMAP
 ================================================================
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 Status: specification phase
 
 Structure of this file:
@@ -597,6 +597,31 @@ Newest entries at the bottom.
             change. Invalid or out-of-range amounts stay in the form with an
             error and write nothing.
 
+2026-11-10  Reservation capacity is checked night by night. The booking guard
+            only asked whether a room of the type existed on the arrival
+            date, so with one suite a booking on the 28th was invisible while
+            adding a 26th-to-30th stay: the arrival night was free, and the
+            later collision surfaced only when someone tried to check in.
+            reservationAvailabilityError now walks every night of the
+            proposed stay and compares demand—this booking plus the other
+            pending bookings of the type—with supply: rooms of the type not
+            out of order for that night and not held by a live stay. The
+            first night that would go over capacity refuses the write with
+            the existing "No Suite room is free on Nov 28." message on the
+            room-type field. Because a booking consumes [arrival, arrival +
+            days), a back-to-back stay still passes: the checkout morning
+            frees the room for the next night.
+            why: the old check was per-arrival, not per-night, and the TODO
+            had accepted it on the theory that check-in would catch the
+            clash. That leaves two real bookings competing for one room and
+            turns a booking-time mistake into a desk-time refusal.
+            Edits exclude the record being edited and only refuse nights it
+            was not already overbooked on, so a duplicate written before
+            this guard can still be shortened or repaired instead of being
+            frozen. availabilityOn now shares the same sellableOn/pendingOn
+            helpers, so a calendar cell and the form cannot disagree about
+            the same night.
+
 ================================================================
 4. TODO TASKS
 ================================================================
@@ -605,7 +630,6 @@ Newest entries at the bottom.
 - Check-out: free an occupied stay into needs cleaning using the register's checked-in entry (the active list no longer carries checked-in records)
 - Propagate duration edits back to a checked-in stay's room timer (checked-in records now live in the register, read-only)
 - Register history has no pruning or filtering; add one when the list grows past a comfortable scroll
-- Reservation-vs-reservation capacity: the guards compare rooms against dates, not bookings against each other — two bookings for the only room of a type on overlapping dates both get added and surface as "No free room" at check-in
 - Guard OOS/dirty/cleaning against live holds too if hand-moving a held room proves annoying (decided 2026-11-04: occupied only)
 - Arrival sheet hides room-state overrides: cancel the booking first to mark a held room OOS/dirty (revisit if the desk needs it mid-arrival)
 - Make the 10:00 boundary, the night-of cutoff and the cleaning durations configurable once a settings screen exists

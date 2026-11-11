@@ -476,27 +476,38 @@ export function occupancyConflict(
   return null;
 }
 
-// The booking-side guard: refuse a reservation no room could serve. Only the
-// fields that decide availability — room type and arrival date — so an edit
-// that moves neither (a duration tweak) is never refused by it, and a record
-// that was already impossible before this guard existed can still be edited.
+// The booking-side guard: refuse a reservation the property cannot sell. It
+// walks every proposed night and compares demand (this booking plus the other
+// pending bookings of the type) with supply (rooms of the type not out of
+// order or held by a live stay that night). The old version only asked whether
+// a room existed for the arrival night, so a later-night booking could quietly
+// take the room another booking already held.
+//
+// current is the record being edited. Only nights it was not already
+// overbooked on can refuse the edit, so a duplicate written before this guard
+// can still be shortened or repaired instead of being frozen in place.
 export function reservationAvailabilityError(state, values, { current } = {}) {
-  if (
-    current &&
-    current.roomType === values.roomType &&
-    current.arrivalDate === values.arrivalDate
-  ) {
-    return null;
+  const proposed = overbookedNights(state, values, {
+    exceptId: current?.id ?? null,
+  });
+  if (proposed.length === 0) return null;
+
+  if (current) {
+    const existing = new Set(
+      overbookedNights(state, current, { exceptId: current.id }),
+    );
+    const worsened = proposed.find((night) => !existing.has(night));
+    if (!worsened) return null;
+    return capacityError(values.roomType, worsened);
   }
 
-  const servable = (state.rooms ?? []).some(
-    (room) => room.type === values.roomType && roomServes(room, values.arrivalDate),
-  );
-  if (servable) return null;
+  return capacityError(values.roomType, proposed[0]);
+}
 
+function capacityError(roomType, isoDate) {
   return {
     field: "roomType",
-    message: `No ${typeLabel(values.roomType)} room is free on ${formatDate(values.arrivalDate)}.`,
+    message: `No ${typeLabel(roomType)} room is free on ${formatDate(isoDate)}.`,
   };
 }
 
@@ -531,6 +542,55 @@ function occupiesNight(arrival, days, night) {
   return arrival <= night && night < end;
 }
 
+// How many of the type's rooms can still be sold on this night: not out of
+// order for it, and not held by a live stay that covers it.
+function sellableOn(state, roomType, night) {
+  return (state.rooms ?? []).filter(
+    (room) =>
+      room.type === roomType &&
+      !oosCoversNight(room, night) &&
+      !stayCoversNight(room, night),
+  ).length;
+}
+
+// Pending bookings of the type already covering this night, ignoring the
+// record being edited. Checked-in records are skipped: their live stay already
+// removes the room from supply.
+function pendingOn(state, roomType, night, exceptId) {
+  return (state.reservations ?? []).filter((reservation) => {
+    if (reservation.checkedInAt || reservation.id === exceptId) return false;
+    if (reservation.roomType !== roomType) return false;
+    const arrival = parseDate(reservation.arrivalDate);
+    return arrival !== null && occupiesNight(arrival, reservation.days, night);
+  }).length;
+}
+
+// Which nights of the proposal would be over capacity, as ISO dates in stay
+// order. The proposal itself counts as one more room on every night.
+function overbookedNights(state, values, { exceptId = null } = {}) {
+  const arrival = parseDate(values.arrivalDate);
+  const days = Number(values.days);
+  if (
+    !arrival ||
+    !Number.isInteger(days) ||
+    days < STAY_MIN_DAYS ||
+    days > STAY_MAX_DAYS
+  ) {
+    return [];
+  }
+
+  const over = [];
+  for (let index = 0; index < days; index += 1) {
+    const night = new Date(arrival);
+    night.setDate(night.getDate() + index);
+    const supply = sellableOn(state, values.roomType, night);
+    if (pendingOn(state, values.roomType, night, exceptId) + 1 > supply) {
+      over.push(toISODate(night));
+    }
+  }
+  return over;
+}
+
 // How many rooms could still be sold for this date — the number every
 // calendar cell shows. Per type: rooms not out of order for that night and not
 // held by a live stay, minus the nights not-checked-in bookings cover; clamped
@@ -539,7 +599,6 @@ function occupiesNight(arrival, days, night) {
 export function availabilityOn(state, isoDate) {
   const night = parseDate(isoDate);
   const rooms = state.rooms ?? [];
-  const reservations = state.reservations ?? [];
 
   const byType = ROOM_TYPES.map(({ value }) => {
     const owned = rooms.filter((room) => room.type === value);
@@ -547,15 +606,10 @@ export function availabilityOn(state, isoDate) {
       return { type: value, total: owned.length, free: 0 };
     }
 
-    const sellable = owned.filter(
-      (room) => !oosCoversNight(room, night) && !stayCoversNight(room, night),
-    ).length;
-
-    const booked = reservations.filter((reservation) => {
-      if (reservation.checkedInAt || reservation.roomType !== value) return false;
-      const arrival = parseDate(reservation.arrivalDate);
-      return arrival !== null && occupiesNight(arrival, reservation.days, night);
-    }).length;
+    // Same supply and demand the booking guard walks, so a cell can never
+    // disagree with what the form would accept.
+    const sellable = sellableOn(state, value, night);
+    const booked = pendingOn(state, value, night, null);
 
     return { type: value, total: owned.length, free: Math.max(0, sellable - booked) };
   });
