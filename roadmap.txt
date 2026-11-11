@@ -707,6 +707,17 @@ Newest entries at the bottom.
             let the desk wander into months with no decision to make. Past
             days inside the live month stay visible and muted as before.
 
+2026-11-11  The availability filter now lives behind a Find a stay disclosure
+            button below the calendar. It starts closed, so the grid and the
+            Incoming/Register actions sit closer together. Tapping the button
+            toggles the panel in place without repainting, which keeps focus
+            on the button; the filter values and active marks are untouched.
+            A closed panel with an active request shows a one-line summary in
+            the button (e.g. "1 Suite for 6 days"), clipped with an ellipsis,
+            so the calendar still explains why dates are checked. The
+            open/closed choice survives month changes and store repaints, but
+            a reload closes it along with resetting the request.
+
 ================================================================
 4. TODO TASKS
 ================================================================

@@ -28,6 +28,10 @@ const request = {
   days: STAY_MIN_DAYS,
 };
 
+// The filter is a disclosure: closed until asked for, and closed again after
+// a reload. The request itself survives while the panel is hidden.
+let filterOpen = false;
+
 // The Reservations screen owns the title; this block only supplies the grid.
 // It is its own <section> so step() can replace just the calendar after a
 // month change instead of the whole screen.
@@ -100,7 +104,11 @@ export function renderCalendar() {
   grid.className = "cal-grid";
   grid.append(...gridCells(view, today));
 
-  section.append(nav, dow, grid, filterBlock(section, view, today));
+  const filterGroup = document.createElement("div");
+  filterGroup.className = "cal-filter-group";
+  filterGroup.append(filterToggle(section), filterBlock(section, view, today));
+
+  section.append(nav, dow, grid, filterGroup);
   return section;
 }
 
@@ -374,21 +382,61 @@ function statusText(view, today) {
   return `${label} · ${matches} start date${matches === 1 ? "" : "s"} this month.`;
 }
 
-// The planning control below the grid. Changing an input repaints only the grid
-// and the status line, so the field being typed in keeps focus; a store write
-// replaces the whole calendar and rebuilds the fields from module state.
+// The disclosure button that keeps the filter out of the way. The panel is
+// toggled in place so focus stays on the button and the calendar below does
+// not move; the active request is summarised while the panel is closed.
+function filterToggle(section) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "btn btn--block cal-filter-toggle";
+  button.dataset.calFilterToggle = "";
+  button.setAttribute("aria-controls", "cal-filter-panel");
+  button.setAttribute("aria-expanded", String(filterOpen));
+
+  const label = document.createElement("span");
+  label.className = "cal-filter-toggle__label";
+  label.textContent = "Find a stay";
+
+  const meta = document.createElement("span");
+  meta.className = "cal-filter-toggle__meta";
+  meta.textContent = requestIsActive() ? requestLabel() : "";
+  meta.hidden = !(requestIsActive() && !filterOpen);
+
+  const chevron = document.createElement("span");
+  chevron.className = "cal-filter-toggle__chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.textContent = filterOpen ? "▾" : "▸";
+
+  button.append(label, meta, chevron);
+  button.addEventListener("click", () => {
+    filterOpen = !filterOpen;
+
+    const panel = section.querySelector(".cal-filter");
+    if (panel) panel.hidden = !filterOpen;
+
+    button.setAttribute("aria-expanded", String(filterOpen));
+    chevron.textContent = filterOpen ? "▾" : "▸";
+
+    // The inputs may have changed while the panel was open, so the summary is
+    // rebuilt from the current request as the panel closes.
+    meta.textContent = requestIsActive() ? requestLabel() : "";
+    meta.hidden = !(requestIsActive() && !filterOpen);
+  });
+
+  return button;
+}
+
+// The planning control behind the disclosure. Changing an input repaints only
+// the grid and the status line, so the field being typed in keeps focus; a
+// store write replaces the whole calendar and rebuilds the fields from module
+// state.
 function filterBlock(section, view, today) {
   const state = getState();
   const totals = roomTotals(state.rooms ?? []);
   const block = document.createElement("div");
   block.className = "cal-filter";
-
-  const head = document.createElement("div");
-  head.className = "cal-filter__head";
-
-  const title = document.createElement("h4");
-  title.className = "cal-filter__title";
-  title.textContent = "Find a stay";
+  block.id = "cal-filter-panel";
+  block.hidden = !filterOpen;
 
   const clear = document.createElement("button");
   clear.type = "button";
@@ -405,8 +453,6 @@ function filterBlock(section, view, today) {
     // control instead of dropping it to <body>.
     fresh.querySelector("[data-cal-filter-days]")?.focus();
   });
-
-  head.append(title, clear);
 
   const counts = document.createElement("div");
   counts.className = "cal-filter__counts";
@@ -476,12 +522,16 @@ function filterBlock(section, view, today) {
 
   duration.append(durationName, days);
 
+  const footer = document.createElement("div");
+  footer.className = "cal-filter__footer";
+  footer.append(duration, clear);
+
   const status = document.createElement("p");
   status.className = "hint cal-filter__status";
   status.setAttribute("aria-live", "polite");
   status.textContent = statusText(view, today);
 
-  block.append(head, counts, duration, status);
+  block.append(counts, footer, status);
   return block;
 }
 
