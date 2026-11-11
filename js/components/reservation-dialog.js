@@ -4,11 +4,14 @@ import {
   RESERVATION_NAME_MAX,
   addReservation,
   arrivingAssignment,
+  bookableRoomTypes,
   checkInReservation,
   formatDate,
   isArrivingNow,
   isReadOnlyReservation,
+  maxStayDays,
   occupancyConflict,
+  parseDate,
   removeReservation,
   reservationAvailabilityError,
   reservationError,
@@ -64,8 +67,10 @@ dialog.innerHTML = `
           step="1"
           inputmode="numeric"
           autocomplete="off"
+          aria-describedby="reservation-stay-hint"
           required
         >
+        <p class="hint" id="reservation-stay-hint" data-stay-hint hidden></p>
       </div>
 
       <div class="field" data-name-field>
@@ -119,6 +124,7 @@ const editCancelButton = dialog.querySelector("[data-edit-cancel]");
 const cancelResButton = dialog.querySelector("[data-cancel-res]");
 const hostHint = dialog.querySelector("[data-host]");
 const metaHint = dialog.querySelector("[data-meta]");
+const stayHint = dialog.querySelector("[data-stay-hint]");
 const typeField = dialog.querySelector("fieldset");
 const checkinBlock = dialog.querySelector("[data-checkin]");
 const checkinButton = dialog.querySelector("[data-checkin-btn]");
@@ -187,6 +193,65 @@ function resetCancelConfirm() {
 function clearCheckinError() {
   checkinError.hidden = true;
   checkinError.textContent = "";
+}
+
+function typeRadios() {
+  return [...form.querySelectorAll('input[name="roomType"]')];
+}
+
+// New bookings only: a type with no room left on the chosen date cannot be
+// picked, so the form never offers a choice the guard would refuse. Edits keep
+// every type live because the record's own hold must not hide its type.
+// The duration hint always follows the selected type and date.
+function syncAvailabilityHints() {
+  if (readOnly()) {
+    stayHint.hidden = true;
+    return;
+  }
+
+  const state = getState();
+  const current = editingId === null ? undefined : findEditing();
+  const date = parseDate(dateInput.value);
+  let bookable = null;
+
+  if (editingId === null) {
+    bookable = date ? bookableRoomTypes(state, dateInput.value, { current }) : null;
+
+    for (const radio of typeRadios()) {
+      const unavailable = bookable !== null && !bookable.includes(radio.value);
+      radio.disabled = unavailable;
+      if (unavailable && radio.checked) radio.checked = false;
+    }
+  }
+
+  if (!date) {
+    stayHint.hidden = true;
+    return;
+  }
+
+  if (editingId === null && bookable.length === 0) {
+    stayHint.textContent = `No rooms are free on ${formatDate(dateInput.value)}.`;
+    stayHint.hidden = false;
+    return;
+  }
+
+  const type = form.elements.roomType.value;
+  if (!type) {
+    stayHint.textContent = "Choose a room type to see the longest stay.";
+    stayHint.hidden = false;
+    return;
+  }
+
+  const days = maxStayDays(state, type, dateInput.value, { current });
+  if (days === 0) {
+    stayHint.textContent =
+      `No ${typeLabel(type)} room is free on ${formatDate(dateInput.value)}.`;
+  } else {
+    stayHint.textContent =
+      `Up to ${days} ${days === 1 ? "day" : "days"} for ${typeLabel(type)} from ` +
+      `${formatDate(dateInput.value)}.`;
+  }
+  stayHint.hidden = false;
 }
 
 // Checked-in and past bookings are history: everything shows as text and only
@@ -272,6 +337,10 @@ function resetForm() {
   setError(null);
   clearCheckinError();
 
+  // Reset leaves disabled alone, so clear the previous sheet's availability
+  // state by hand; syncAvailabilityHints below sets it for today.
+  for (const radio of typeRadios()) radio.disabled = false;
+
   // A reservation books a night to come, so the picker opens on today and
   // refuses anything earlier at both the input and the validator.
   const today = todayISO();
@@ -280,6 +349,7 @@ function resetForm() {
 
   addButton.disabled = true;
   syncMode();
+  syncAvailabilityHints();
 }
 
 function prefill() {
@@ -310,6 +380,9 @@ function readValues() {
 }
 
 form.addEventListener("change", (event) => {
+  if (event.target.name === "arrivalDate" || event.target.name === "roomType") {
+    syncAvailabilityHints();
+  }
   addButton.disabled = form.elements.roomType.value === "";
   syncArrivalActions();
   clearCheckinError();
@@ -544,6 +617,7 @@ export function openReservationDialog(reservationId = null, options = {}) {
     prefill();
   }
 
+  syncAvailabilityHints();
   syncArrivalActions();
   dialog.showModal();
   if (editingId === null) {

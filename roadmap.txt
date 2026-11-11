@@ -1,7 +1,7 @@
 ================================================================
 HOTEL MANAGER — ROADMAP
 ================================================================
-Last updated: 2026-11-10
+Last updated: 2026-11-11
 Status: specification phase
 
 Structure of this file:
@@ -621,6 +621,26 @@ Newest entries at the bottom.
             frozen. availabilityOn now shares the same sellableOn/pendingOn
             helpers, so a calendar cell and the form cannot disagree about
             the same night.
+
+2026-11-11  The new-reservation sheet now advertises what it can sell. Room
+            type options with nothing left on the chosen arrival night are
+            disabled—capacity after the other pending bookings, out-of-order
+            windows and live stays—and the chosen type updates a hint under
+            Duration: "Up to 2 days for Suite from Nov 29." The number is the
+            first night with no spare room, capped at the year limit. Before
+            a type is picked the hint asks for one; a fully booked night says
+            "No rooms are free on Nov 30." and leaves every option disabled.
+            Moving the date can disable and clear a type that was chosen, and
+            the Add button follows the selection. Editing keeps all types
+            enabled by decision: the record's own hold must not hide its
+            type, but the hint excludes the record being edited so its
+            remaining run stays honest.
+            why: the booking guard already refused impossible stays on save,
+            but the sheet gave no sign until submit—the desk could pick a
+            type that had no room or ask for more nights than the calendar
+            had. bookableRoomTypes and maxStayDays share capacityLeftOn with
+            the guard, so the option states, the hint and the write can never
+            disagree.
 
 ================================================================
 4. TODO TASKS

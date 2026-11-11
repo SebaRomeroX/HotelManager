@@ -565,6 +565,42 @@ function pendingOn(state, roomType, night, exceptId) {
   }).length;
 }
 
+// Rooms still sellable for the type on this night once the other bookings are
+// counted. Below 1, a new booking has nowhere to go.
+function capacityLeftOn(state, roomType, night, exceptId) {
+  return sellableOn(state, roomType, night) - pendingOn(state, roomType, night, exceptId);
+}
+
+// The room types that can start a booking on this date: at least one room of
+// the type is still free after the other pending bookings that night. The
+// record being edited is excluded, so an edit never hides its own type.
+export function bookableRoomTypes(state, isoDate, { current } = {}) {
+  const night = parseDate(isoDate);
+  if (!night) return [];
+
+  const exceptId = current?.id ?? null;
+  return ROOM_TYPES.map(({ value }) => value).filter(
+    (roomType) => capacityLeftOn(state, roomType, night, exceptId) > 0,
+  );
+}
+
+// The longest stay that can start on this date, capped at the year limit.
+// Zero means not even the first night has a room left. Each extra night is
+// tested against the same capacity line as the booking guard, so the hint can
+// never promise a duration the form would refuse.
+export function maxStayDays(state, roomType, isoDate, { current } = {}) {
+  const arrival = parseDate(isoDate);
+  if (!arrival) return 0;
+
+  const exceptId = current?.id ?? null;
+  for (let days = 1; days <= STAY_MAX_DAYS; days += 1) {
+    const night = new Date(arrival);
+    night.setDate(night.getDate() + days - 1);
+    if (capacityLeftOn(state, roomType, night, exceptId) < 1) return days - 1;
+  }
+  return STAY_MAX_DAYS;
+}
+
 // Which nights of the proposal would be over capacity, as ISO dates in stay
 // order. The proposal itself counts as one more room on every night.
 function overbookedNights(state, values, { exceptId = null } = {}) {
@@ -583,8 +619,7 @@ function overbookedNights(state, values, { exceptId = null } = {}) {
   for (let index = 0; index < days; index += 1) {
     const night = new Date(arrival);
     night.setDate(night.getDate() + index);
-    const supply = sellableOn(state, values.roomType, night);
-    if (pendingOn(state, values.roomType, night, exceptId) + 1 > supply) {
+    if (capacityLeftOn(state, values.roomType, night, exceptId) < 1) {
       over.push(toISODate(night));
     }
   }
