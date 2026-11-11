@@ -156,12 +156,12 @@ dialog.innerHTML = `
         </div>
       </fieldset>
 
-      <p class="hint">Leave the amount blank for an open-ended out of order.</p>
+      <p class="hint">Leave the amount blank to keep it disabled until you change it.</p>
 
       <p class="error" data-oos-error role="alert" hidden></p>
 
       <div class="form__actions">
-        <button class="btn btn--primary" type="submit">Set out of order</button>
+        <button class="btn btn--primary" type="submit">Set disabled</button>
         <button class="btn" type="button" data-oos-cancel>Cancel</button>
       </div>
     </form>
@@ -359,7 +359,7 @@ function showOosForm(room) {
   oosError.hidden = true;
   oosError.textContent = "";
 
-  // Only seed on first reveal: re-tapping Out of order must not wipe what was
+  // Only seed on first reveal: re-tapping Disabled must not wipe what was
   // typed, but an existing timed marker opens with its remaining duration.
   if (!oosAmount.dataset.ready) {
     oosAmount.value = "";

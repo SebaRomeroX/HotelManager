@@ -9,7 +9,7 @@ export const ROOM_STATES = [
   { value: "cleaning", label: "Cleaning" },
   { value: "dirty", label: "To clean" },
   { value: "occupied", label: "Occupied" },
-  { value: "oos", label: "Out of order" },
+  { value: "oos", label: "Disabled" },
 ];
 
 export const ROOM_NAME_MAX = 40;

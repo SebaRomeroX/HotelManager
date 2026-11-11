@@ -667,6 +667,13 @@ Newest entries at the bottom.
             longer wording crowded the chip on a 360px screen. The stored
             value stays "dirty", so state data and ordering are untouched.
 
+2026-11-11  The out-of-order state now reads "Disabled" for the same reason:
+            the chip and card label had to fit on one line at 360px. The
+            state sheet's action and hint follow ("Set disabled", "Leave the
+            amount blank to keep it disabled until you change it"). The stored
+            value stays "oos", so timers, availability guards and sorting are
+            untouched.
+
 ================================================================
 4. TODO TASKS
 ================================================================
