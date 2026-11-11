@@ -251,6 +251,11 @@ p {
   font: inherit;
 }
 
+.input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .segmented {
   display: flex;
   gap: var(--space-1);
@@ -867,6 +872,96 @@ p {
 .cal-cell__free {
   color: var(--text-muted);
   font-size: var(--text-xs);
+}
+
+/* While a request is active a cell answers a different question: can this
+   whole stay start here? Fit dates keep the accent, the rest go quiet. */
+.cal-cell--fits {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.cal-cell--fits .cal-cell__fit {
+  color: var(--accent);
+}
+
+.cal-cell--no-fit {
+  background: var(--bg);
+  color: var(--text-muted);
+}
+
+.cal-cell--no-fit .cal-cell__fit {
+  color: transparent;
+}
+
+.cal-cell__fit {
+  min-height: 1em;
+  font-size: var(--text-xs);
+  line-height: 1;
+}
+
+/* ===================== availability filter ===================== */
+
+.cal-filter {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.cal-filter__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.cal-filter__title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.cal-filter__clear {
+  min-height: calc(var(--tap) - var(--space-2));
+  padding: 0 var(--space-3);
+}
+
+.cal-filter__counts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.cal-filter__field {
+  display: grid;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.cal-filter__count {
+  width: 100%;
+  min-width: 0;
+}
+
+.cal-filter__duration {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.cal-filter__duration .input {
+  width: 6rem;
+}
+
+.cal-filter__status {
+  margin: 0;
 }
 
 .avail-list {

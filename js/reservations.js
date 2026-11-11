@@ -656,6 +656,49 @@ export function availabilityOn(state, isoDate) {
   };
 }
 
+// Whether a whole request — counts of rooms per type for `days` nights — can
+// start on this date. Every requested type needs that many rooms free on every
+// night of [arrival, arrival + days), checked against the same supply and
+// demand the booking guard uses. Malformed requests never fit, so a half-typed
+// filter cannot mark dates.
+export function requestFitsOn(state, isoDate, { days, counts } = {}) {
+  const arrival = parseDate(isoDate);
+  const nights = Number(days);
+
+  if (
+    !arrival ||
+    !Number.isInteger(nights) ||
+    nights < STAY_MIN_DAYS ||
+    nights > STAY_MAX_DAYS ||
+    !counts ||
+    typeof counts !== "object"
+  ) {
+    return false;
+  }
+
+  const wanted = ROOM_TYPES.map(({ value }) => [
+    value,
+    Number(counts[value] ?? 0),
+  ]).filter(([, count]) => count > 0);
+
+  if (wanted.length === 0) return false;
+  if (wanted.some(([, count]) => !Number.isInteger(count))) return false;
+
+  for (let index = 0; index < nights; index += 1) {
+    const night = new Date(arrival);
+    night.setDate(night.getDate() + index);
+    if (
+      wanted.some(
+        ([roomType, count]) => capacityLeftOn(state, roomType, night) < count,
+      )
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 // Which free room each arriving booking holds, derived fresh on every render:
 // nothing is stored, so occupying, OOS-ing or cleaning the held room simply
 // moves the marker to the next free match with no write and no drift. Order

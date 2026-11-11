@@ -642,6 +642,26 @@ Newest entries at the bottom.
             the guard, so the option states, the hint and the write can never
             disagree.
 
+2026-11-11  The calendar can now answer "when can this whole stay start?".
+            A Find a stay block below the grid takes fixed counts for Small,
+            Large and Suite plus one shared Duration in days. While a request
+            is active every cell becomes a start date: a day number and a
+            check when the requested rooms are free for every night of
+            [arrival, arrival + days), day number alone and muted otherwise.
+            Per-night free counts return when the filter is cleared. Counts
+            are capped at each type's room total and disabled for a type with
+            no rooms; duration stops at the year limit. The status line names
+            the request and counts the month's start dates, or says none fit.
+            why: the desk plans a stay, not a single night, and the per-night
+            count cannot say whether a six-night run is possible. The filter
+            is transient—module state in calendar.js survives month arrows and
+            repaints but not a reload—and repaints only the grid and status
+            while typing, which keeps the focused field alive. requestFitsOn
+            walks the nights through capacityLeftOn, the same supply and
+            demand the booking guard uses, so a checked date is one the form
+            would accept. Tapping a checked date still opens the normal day
+            sheet: the filter is a planning aid, not a booking shortcut.
+
 ================================================================
 4. TODO TASKS
 ================================================================
