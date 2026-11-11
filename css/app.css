@@ -837,6 +837,12 @@ p {
   pointer-events: none;
 }
 
+/* Blank cells keep the same line boxes as real days so every row and every
+   month has the same height; only the visible text is removed. */
+.cal-cell--blank > span {
+  visibility: hidden;
+}
+
 .cal-cell--today {
   border-color: var(--accent);
   outline: 1px solid var(--accent);

@@ -689,6 +689,14 @@ Newest entries at the bottom.
             lands on; Today must not inherit it. The row is always
             left arrow, month, Today, right arrow, so neither arrow moves.
 
+2026-11-11  Calendar months now always occupy six week rows. A month can span
+            four to six weeks, and letting the grid shrink or grow moved the
+            filter and everything below it while paging. The grid pads to 42
+            cells, and blank cells carry hidden day/count (or check) spans so
+            every row has the same intrinsic height—including while the
+            availability filter is on and cells switch to the one-line check
+            shape. The extra cells are inert and aria-hidden.
+
 ================================================================
 4. TODO TASKS
 ================================================================

@@ -137,6 +137,27 @@ function blank() {
   const cell = document.createElement("span");
   cell.className = "cal-cell cal-cell--blank";
   cell.setAttribute("aria-hidden", "true");
+
+  // The placeholders are hidden but keep the same two-line shape as a real
+  // day. Without them, rows made only of blanks are shorter and the grid (and
+  // the page under it) changes height from one month to the next.
+  const number = document.createElement("span");
+  number.className = "cal-cell__day";
+  number.textContent = "0";
+  cell.append(number);
+
+  if (requestIsActive()) {
+    const mark = document.createElement("span");
+    mark.className = "cal-cell__fit";
+    mark.textContent = "✓";
+    cell.append(mark);
+  } else {
+    const count = document.createElement("span");
+    count.className = "cal-cell__free";
+    count.textContent = "0";
+    cell.append(count);
+  }
+
   return cell;
 }
 
@@ -156,6 +177,13 @@ function gridCells(view, today) {
 
   const trailing = (7 - ((leading + daysInMonth) % 7)) % 7;
   for (let i = 0; i < trailing; i += 1) {
+    cells.push(blank());
+  }
+
+  // A month can need four to six weeks. Letting the grid grow and shrink makes
+  // the whole page jump under the thumb while paging, so every month keeps six
+  // rows; the extra cells are inert blanks.
+  while (cells.length < 42) {
     cells.push(blank());
   }
 
