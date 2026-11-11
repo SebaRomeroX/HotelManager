@@ -16,6 +16,10 @@ const DOW = ["M", "T", "W", "T", "F", "S", "S"];
 // write never yanks a browsed month back. Arrows set it, Today clears it.
 let anchor = null;
 
+// The calendar stops at the live month and twelve months ahead. No arrival
+// can be further out usefully, and the narrower range keeps paging bounded.
+const MAX_FUTURE_MONTHS = 12;
+
 // The request under the calendar: how many rooms of each type for how many
 // nights. Module level like anchor, so browsing months or a store repaint
 // keeps it; a page reload resets it. `days` is null while the field is empty.
@@ -44,14 +48,25 @@ export function renderCalendar() {
   clampRequest(roomTotals(rooms));
 
   const now = new Date();
-  const view = anchor ?? { year: now.getFullYear(), month: now.getMonth() };
+  const live = liveMonth(now);
+  const liveIndex = monthIndex(live);
+  const lastIndex = liveIndex + MAX_FUTURE_MONTHS;
+  const viewIndex = Math.min(
+    Math.max(monthIndex(anchor ?? live), liveIndex),
+    lastIndex,
+  );
+  const view = monthAt(viewIndex);
   const today = todayISO();
+  const atLive = viewIndex === liveIndex;
+  const atLast = viewIndex === lastIndex;
 
   const nav = document.createElement("div");
   nav.className = "cal-nav";
 
   const prev = navButton("prev", "‹", `Previous month`);
+  prev.disabled = atLive;
   const next = navButton("next", "›", `Next month`);
+  next.disabled = atLast;
 
   const label = document.createElement("span");
   label.className = "cal-nav__label";
@@ -65,7 +80,7 @@ export function renderCalendar() {
   // Keep the button in the row even on the live month. Removing it would move
   // the right arrow under the tap position, so a quick second tap would hit
   // Today and jump back instead of moving another month.
-  todayButton.disabled = anchor === null;
+  todayButton.disabled = atLive;
   todayButton.addEventListener("click", () => step("today", todayButton.closest("section")));
 
   // Today sits between the month and the right arrow so the right arrow always
@@ -100,6 +115,20 @@ function isoOf(year, month, day) {
   return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+function liveMonth(now = new Date()) {
+  return { year: now.getFullYear(), month: now.getMonth() };
+}
+
+// A month as one number, so range checks and shifts cannot trip over the
+// December-to-January rollover.
+function monthIndex({ year, month }) {
+  return year * 12 + month;
+}
+
+function monthAt(index) {
+  return { year: Math.floor(index / 12), month: index % 12 };
+}
+
 function navButton(which, glyph, label) {
   const button = document.createElement("button");
   button.type = "button";
@@ -115,22 +144,35 @@ function navButton(which, glyph, label) {
 // own render is not reachable from here, and losing focus on every arrow
 // press would strand keyboard users.
 function step(which, section) {
-  const now = new Date();
-  const current = anchor ?? { year: now.getFullYear(), month: now.getMonth() };
+  const live = liveMonth();
+  const liveIndex = monthIndex(live);
+  const lastIndex = liveIndex + MAX_FUTURE_MONTHS;
 
   if (which === "today") {
     anchor = null;
   } else {
-    const shifted = new Date(current.year, current.month + (which === "next" ? 1 : -1), 1);
-    anchor = { year: shifted.getFullYear(), month: shifted.getMonth() };
+    const currentIndex = Math.min(
+      Math.max(monthIndex(anchor ?? live), liveIndex),
+      lastIndex,
+    );
+    const nextIndex = currentIndex + (which === "next" ? 1 : -1);
+    if (nextIndex < liveIndex || nextIndex > lastIndex) return;
+    anchor = monthAt(nextIndex);
   }
 
   const fresh = renderCalendar();
   section.replaceWith(fresh);
-  // Today disables itself on the fresh render, so focus falls back to the
-  // nav's first arrow instead of dropping to <body>.
+  // The clicked button can disable itself at a limit (or Today on return), so
+  // focus the first control that is still usable instead of dropping to
+  // <body>.
   const target = fresh.querySelector(`[data-nav="${which}"]`);
-  (target && !target.disabled ? target : fresh.querySelector('[data-nav="prev"]'))?.focus();
+  const focusTarget =
+    target && !target.disabled
+      ? target
+      : [...fresh.querySelectorAll(".cal-nav [data-nav]")].find(
+          (button) => !button.disabled,
+        );
+  focusTarget?.focus();
 }
 
 function blank() {

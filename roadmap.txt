@@ -697,6 +697,16 @@ Newest entries at the bottom.
             availability filter is on and cells switch to the one-line check
             shape. The extra cells are inert and aria-hidden.
 
+2026-11-11  Calendar paging is bounded to the live month through twelve months
+            ahead. Previous is disabled on the live month and Next on the far
+            month; step() also refuses out-of-range shifts if called directly.
+            Today still returns from the future. When a clicked control
+            disables itself at a limit, focus goes to the first enabled nav
+            control instead of dropping to <body>. why: a booking cannot
+            usefully be planned further than a year out, and an unbounded grid
+            let the desk wander into months with no decision to make. Past
+            days inside the live month stay visible and muted as before.
+
 ================================================================
 4. TODO TASKS
 ================================================================
