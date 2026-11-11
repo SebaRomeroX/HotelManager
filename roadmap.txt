@@ -674,6 +674,15 @@ Newest entries at the bottom.
             value stays "oos", so timers, availability guards and sorting are
             untouched.
 
+2026-11-11  The calendar's Today button is always in the nav row, disabled
+            while the live month is showing. Previously it appeared only
+            after browsing away, which shifted the right arrow left: a quick
+            second tap where the arrow had been landed on Today and jumped
+            back to the live month. Keeping the button in place makes both
+            arrows stable for rapid paging. Today disables again on return,
+            and step() sends focus to the previous-month arrow instead of
+            dropping it when the clicked button becomes unavailable.
+
 ================================================================
 4. TODO TASKS
 ================================================================

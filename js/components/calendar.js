@@ -62,8 +62,10 @@ export function renderCalendar() {
   todayButton.className = "btn";
   todayButton.dataset.nav = "today";
   todayButton.textContent = "Today";
-  // Only worth showing once you have browsed away from the live month.
-  todayButton.hidden = anchor === null;
+  // Keep the button in the row even on the live month. Removing it would move
+  // the right arrow under the tap position, so a quick second tap would hit
+  // Today and jump back instead of moving another month.
+  todayButton.disabled = anchor === null;
   todayButton.addEventListener("click", () => step("today", todayButton.closest("section")));
 
   nav.append(prev, label, next, todayButton);
@@ -123,10 +125,10 @@ function step(which, section) {
 
   const fresh = renderCalendar();
   section.replaceWith(fresh);
-  // Today hides itself on the fresh render, so focus falls back to the nav's
-  // first arrow instead of dropping to <body>.
+  // Today disables itself on the fresh render, so focus falls back to the
+  // nav's first arrow instead of dropping to <body>.
   const target = fresh.querySelector(`[data-nav="${which}"]`);
-  (target && !target.hidden ? target : fresh.querySelector('[data-nav="prev"]'))?.focus();
+  (target && !target.disabled ? target : fresh.querySelector('[data-nav="prev"]'))?.focus();
 }
 
 function blank() {
