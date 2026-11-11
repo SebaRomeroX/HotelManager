@@ -662,6 +662,11 @@ Newest entries at the bottom.
             would accept. Tapping a checked date still opens the normal day
             sheet: the filter is a planning aid, not a booking shortcut.
 
+2026-11-11  The dirty room state now reads "To clean" instead of "Needs
+            cleaning". The label is the visible chip and card text, and the
+            longer wording crowded the chip on a 360px screen. The stored
+            value stays "dirty", so state data and ordering are untouched.
+
 ================================================================
 4. TODO TASKS
 ================================================================

@@ -7,7 +7,7 @@ export const ROOM_TYPES = [
 export const ROOM_STATES = [
   { value: "vacant", label: "Vacant" },
   { value: "cleaning", label: "Cleaning" },
-  { value: "dirty", label: "Needs cleaning" },
+  { value: "dirty", label: "To clean" },
   { value: "occupied", label: "Occupied" },
   { value: "oos", label: "Out of order" },
 ];
