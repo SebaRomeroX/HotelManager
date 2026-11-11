@@ -68,7 +68,9 @@ export function renderCalendar() {
   todayButton.disabled = anchor === null;
   todayButton.addEventListener("click", () => step("today", todayButton.closest("section")));
 
-  nav.append(prev, label, next, todayButton);
+  // Today sits between the month and the right arrow so the right arrow always
+  // holds the far edge, even when Today appears after browsing away.
+  nav.append(prev, label, todayButton, next);
 
   const dow = document.createElement("div");
   dow.className = "cal-dow";

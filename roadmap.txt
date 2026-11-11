@@ -683,6 +683,12 @@ Newest entries at the bottom.
             and step() sends focus to the previous-month arrow instead of
             dropping it when the clicked button becomes unavailable.
 
+2026-11-11  Correction to that nav order: Today belongs between the month
+            label and the right arrow, not after it. The far right edge must
+            stay the right arrow, because that is the spot a quick second tap
+            lands on; Today must not inherit it. The row is always
+            left arrow, month, Today, right arrow, so neither arrow moves.
+
 ================================================================
 4. TODO TASKS
 ================================================================
