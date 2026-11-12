@@ -1,8 +1,8 @@
 ================================================================
 HOTEL MANAGER — ROADMAP
 ================================================================
-Last updated: 2026-11-11
-Status: specification phase
+Last updated: 2026-11-12
+Status: implementation phase — rooms, states, reservations and history working
 
 Structure of this file:
   1. GUIDANCE               fixed rules, never violated
@@ -10,6 +10,7 @@ Structure of this file:
   3. DEV LOG                 dated record of work and reasoning
   4. TODO TASKS              open work items
   5. FUTURE FEATURES         deliberately out of scope
+  6. GRADE REVIEW            current score and the work that raises it
 
 
 ================================================================
@@ -772,3 +773,139 @@ Newest entries at the bottom.
 ================================================================
 
 (empty by design — nothing goes here until the MVP works)
+
+
+================================================================
+6. GRADE REVIEW
+================================================================
+
+Current grade: 7 / 10 (2026-11-12)
+Target grade: 9 / 10
+
+6.1 Why this is already better than a toy
+- The scope is honest: three feature areas, no accounts, no network, no
+  build step, no runtime dependency. The implementation matches the spec.
+- Domain logic is separated from the DOM. Availability, capacity, group
+  check-in, no-show reconciliation and schema migration are pure functions
+  that can be tested without a browser.
+- Hard cases are handled rather than deferred: the 10:00 boundary, the
+  00:00-03:59 night-of rule, cleaning and OOS timers, multi-room atomic
+  check-in, greedy arrival assignment, and one-way schema migrations.
+- The mobile UI is deliberate: 360px first, 44px targets, native dialogs,
+  stable six-row calendar, explicit focus return after dialogs.
+- Comments explain why, and the dev log records the reasoning behind
+  non-obvious calls. That is rare and it is worth real marks.
+
+6.2 What keeps the grade at 7
+- The checks live outside the repository. The 89 domain and browser checks
+  under /tmp/opencode/multi prove the current build but vanish with the
+  machine, so no future change is protected by them.
+- There is no README. A new reader cannot find the run command, the data
+  model, the schema version, or the test commands from the repository.
+- Saved data can fail silently. A corrupt localStorage payload becomes an
+  empty app, and a quota/private-mode write failure only leaves a comment
+  in the code. For a single-copy local app that is the biggest reliability
+  gap.
+- There is no way to get the data out. One browser profile is the only
+  copy; clearing site data loses the property.
+- Destructive room deletion is still unguarded. Removing a room can leave
+  existing reservations short of the supply they were sold against.
+- Accessibility is good in places but unverified as a whole: focus return
+  and aria labels exist, yet keyboard paging through the 42-cell grid,
+  live-region announcements, contrast and 200% zoom have no pass/fail
+  checklist.
+- Several modules are now large (reservations.js ~1000 lines, the
+  reservation and state dialogs ~700 and ~640). The responsibilities are
+  still coherent, but navigation costs are rising.
+- The roadmap header drifted: it still said "specification phase" after
+  four schema versions and a complete working app. Documentation that is
+  not maintained costs more than no documentation.
+
+6.3 Ordered work that raises the grade
+Highest lift first. Each item must leave proof in the repository, not only
+in a terminal transcript.
+
+1. Commit the test suite
+   - Move the pure-domain checks into tests/domain.test.mjs and run them
+     with the built-in runner: `node --test tests/`.
+   - Cover rooms timers, capacity, group check-in, filter fitting,
+     reservation edit/cancel, and every schema migration (v1 → v4).
+   - Keep the browser checks in tests/flows.mjs as an optional dev tool;
+     Playwright stays dev-only and the app still runs without it.
+   - Acceptance: `git clone` + `node --test tests/` passes with no
+     /tmp dependency. Grade lift: the project stops relying on memory.
+
+2. Add a README and keep this roadmap current
+   - State what the app is, how to serve it (`python3 -m http.server`),
+     how to run tests, the schema version, the data model, and the known
+     limitations (one browser, no backup, no multi-user).
+   - Add a short "where things live" map matching section 2.6.
+   - Acceptance: a reader can run and test the app without opening the
+     source. The header is updated whenever a feature lands.
+
+3. Make storage failure visible and recoverable
+   - On unreadable JSON, keep the raw payload, show a calm error, and
+     offer "Download saved data" and "Start empty" instead of silently
+     discarding everything.
+   - On write failure, surface a non-blocking banner ("Changes are not
+     being saved") rather than only commenting in the catch block.
+   - Add tests for corrupt data, wrong types, unavailable storage and
+     quota errors.
+   - Acceptance: no failure path loses data without telling the user.
+
+4. Add export / restore
+   - One button downloads the full state as JSON; one file input restores
+     it after schema validation and an explicit confirmation.
+   - Restore runs migrate(), rejects a future schema version, and never
+     overwrites silently.
+   - Acceptance: a fresh browser can receive an exported file and render
+     the same rooms, bookings and register. This stays inside the
+     localStorage spec; it is not sync.
+
+5. Guard destructive edits
+   - Refuse to delete a room that a pending reservation still needs, and
+     name the booking in the error. History snapshots may keep a deleted
+     room's name.
+   - Require confirmation before clearing the register.
+   - Acceptance: a capacity guard test proves the refusal and the wording.
+
+6. Run an accessibility pass and record the checklist
+   - Keyboard-only: page months, open a day, book, edit, cancel and return
+     focus to the exact opener.
+   - `aria-live` for filter status, save/refusal messages and check-in
+     confirmation.
+   - Contrast and 200% zoom at 360px; no horizontal scroll.
+   - Acceptance: a short ACCESSIBILITY.md checklist with the browser and
+     result, repeated after any focus/DOM change.
+
+7. Verify the responsive range, not one width
+   - Add screenshot checks at 320, 360, 390, 768 and landscape.
+   - Confirm the three-column count grids and two-up cards survive the
+     narrowest width.
+   - Acceptance: screenshots and a one-line result per width in the dev
+     log.
+
+8. Only then split the large modules
+   - Extract date/time math, capacity math and register snapshots from
+     reservations.js; extract shared form/error helpers from the dialogs.
+   - Do it behind the committed tests so the split is provably behaviour
+     preserving.
+   - Acceptance: no file over ~500 lines unless it is a single coherent
+     view, and tests still pass unchanged.
+
+6.4 Milestones
+- 8 / 10: items 1-3 done. The project has evidence, onboarding and a
+  trustworthy data path.
+- 9 / 10: items 4-7 done as well. Data is recoverable, destructive edits
+  are guarded, and accessibility/responsiveness are demonstrated rather
+  than assumed.
+- 10 / 10 is deliberately not claimed: a single-browser, single-user app
+  without multi-device sync or a server-side backup is the right scope
+  here, but it is not a production property system.
+
+6.5 What not to add for the grade
+- No framework, bundler, CSS library or icon font. The zero-dependency
+  constraint is part of the quality, not a limitation to apologise for.
+- No accounts, payments or channel manager. Those would add surface area
+  without improving the core front-desk loop.
+- No animation or visual polish pass. The current restraint is the design.
