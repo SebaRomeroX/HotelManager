@@ -580,6 +580,132 @@ try {
     (await page.locator("dialog[open] #reservation-date").count()) === 0,
   );
   await closeDialog();
+
+  // ---------- J. unreadable saved data ----------
+  await page.evaluate(() =>
+    localStorage.setItem("hotelmanager:state", "{not json"),
+  );
+  await page.reload();
+  await page.waitForSelector(".storage-banner__title");
+
+  check(
+    "an unreadable payload shows the recovery banner",
+    (await page.locator(".storage-banner__title").textContent()) ===
+      "Saved data could not be read",
+  );
+  check(
+    "the recovery banner offers a download",
+    (await page.locator("[data-download]").textContent()) ===
+      "Download saved data",
+  );
+  check(
+    "the raw payload is left untouched",
+    (await page.evaluate(() => localStorage.getItem("hotelmanager:state"))) ===
+      "{not json",
+  );
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.click("[data-download]"),
+  ]);
+  check(
+    "the saved copy downloads under a dated name",
+    /^hotelmanager-saved-data-\d{4}-\d{2}-\d{2}\.json$/.test(
+      download.suggestedFilename(),
+    ),
+    download.suggestedFilename(),
+  );
+
+  await page.click("[data-start-empty]");
+  check(
+    "start empty arms before discarding",
+    (await page.locator("[data-start-empty]").textContent()) ===
+      "Confirm start empty" &&
+      (await page.evaluate(() => localStorage.getItem("hotelmanager:state"))) ===
+        "{not json",
+  );
+  await page.click("[data-start-empty]");
+  await page.waitForTimeout(100);
+  check(
+    "confirming start empty clears the banner",
+    await page.locator(".storage-banner").isHidden(),
+  );
+  const fresh = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("hotelmanager:state")),
+  );
+  check(
+    "start empty writes a clean state",
+    fresh.version === 4 &&
+      fresh.rooms.length === 0 &&
+      fresh.reservations.length === 0 &&
+      fresh.register.length === 0,
+    JSON.stringify(fresh),
+  );
+
+  // ---------- K. a failed write keeps the UI working ----------
+  const quotaPage = await browser.newPage({
+    viewport: { width: 360, height: 1000 },
+  });
+  quotaPage.on("pageerror", (error) => errors.push(error.message));
+
+  await quotaPage.addInitScript(() => {
+    const original = Storage.prototype.setItem;
+    window.__restoreSetItem = () => {
+      Storage.prototype.setItem = original;
+    };
+    Storage.prototype.setItem = function (key, value) {
+      if (key === "hotelmanager:state") {
+        throw new DOMException("The quota is full.", "QuotaExceededError");
+      }
+      return original.call(this, key, value);
+    };
+  });
+
+  await quotaPage.goto(APP_URL);
+  await quotaPage.waitForSelector(".view__title");
+  check(
+    "a healthy page starts without the banner",
+    await quotaPage.locator(".storage-banner").isHidden(),
+  );
+
+  await quotaPage.evaluate(async () => {
+    const store = await import("/js/store.js");
+    store.update((state) => ({
+      ...state,
+      rooms: [{ id: "r1", name: "Room 1", type: "small", state: "dirty" }],
+    }));
+  });
+  await quotaPage.waitForTimeout(100);
+
+  check(
+    "a failed write shows the saving banner",
+    (await quotaPage.locator(".storage-banner__title").textContent()) ===
+      "Changes are not being saved",
+  );
+  check(
+    "the failed change is still on screen",
+    (await quotaPage.locator(".view").textContent()).includes("Room 1"),
+  );
+
+  await quotaPage.evaluate(async () => {
+    window.__restoreSetItem();
+    const store = await import("/js/store.js");
+    store.update((state) => ({ ...state }));
+  });
+  await quotaPage.waitForTimeout(100);
+  check(
+    "a later successful write clears the banner",
+    await quotaPage.locator(".storage-banner").isHidden(),
+  );
+  check(
+    "the recovered write reaches storage",
+    (
+      await quotaPage.evaluate(() =>
+        JSON.parse(localStorage.getItem("hotelmanager:state")),
+      )
+    ).rooms.length === 1,
+  );
+  await quotaPage.close();
 } finally {
   await browser.close();
   server.kill();

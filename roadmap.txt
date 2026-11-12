@@ -99,10 +99,11 @@ Nothing else is in scope until these three are working.
   css/tokens.css        palette, spacing, type scale — the theme swap point
   css/app.css           layout and components
   js/app.js             bootstrap and view switching
-  js/store.js           state container and persistence
+  js/store.js           state container, persistence and storage status
   js/views/*.js         one module per screen
   js/components/*.js    small reusable render helpers
   tests/domain.test.mjs dependency-free domain checks (node:test)
+  tests/store.test.mjs  storage failure and recovery checks (node:test)
   tests/flows.mjs       optional Playwright browser flow checks
   package.json          dev commands only; no dependencies
   README.md             quick start, data model, tests and limitations
@@ -782,6 +783,19 @@ Newest entries at the bottom.
             tests, package.json and README. why: a clean clone had the
             evidence but no instructions for finding or running it.
 
+2026-11-12  Storage failures now have a visible, recoverable path.
+            js/store.js keeps a status beside the state: an unreadable
+            payload keeps its exact raw bytes and blocks writes until the
+            user downloads it or chooses Start empty; blocked storage and
+            quota errors surface as a non-blocking "Changes are not being
+            saved" banner. Status listeners are separate from state
+            listeners, so the banner never repaints the desk or moves focus,
+            and a later successful write clears it. Start empty is armed in
+            the banner, and a failed migration write-back is reported
+            instead of swallowed. why: a single-copy local app must never
+            lose data silently, and the old catch blocks made corruption
+            look like an empty property.
+
 ================================================================
 4. TODO TASKS
 ================================================================
@@ -806,7 +820,7 @@ Newest entries at the bottom.
 6. GRADE REVIEW
 ================================================================
 
-Current grade: 7 / 10 (2026-11-12)
+Current grade: 8 / 10 (2026-11-12)
 Target grade: 9 / 10
 
 6.1 Why this is already better than a toy
@@ -823,16 +837,13 @@ Target grade: 9 / 10
 - Comments explain why, and the dev log records the reasoning behind
   non-obvious calls. That is rare and it is worth real marks.
 
-6.2 What keeps the grade at 7
-- The test suite is young. It proves the domain and the main flows, but the
-  storage failure paths (item 3) and the accessibility checklist (item 6)
-  are still unverified.
-- Saved data can fail silently. A corrupt localStorage payload becomes an
-  empty app, and a quota/private-mode write failure only leaves a comment
-  in the code. For a single-copy local app that is the biggest reliability
-  gap.
+6.2 What keeps the grade at 8
+- The test suite is young. It proves the domain, the main flows and the
+  storage failure paths, but the accessibility checklist (item 6) and the
+  wider responsive range (item 7) are still unverified.
 - There is no way to get the data out. One browser profile is the only
-  copy; clearing site data loses the property.
+  copy; clearing site data loses the property. The recovery banner can
+  download an unreadable payload, but that is not a backup or a restore.
 - Destructive room deletion is still unguarded. Removing a room can leave
   existing reservations short of the supply they were sold against.
 - Accessibility is good in places but unverified as a whole: focus return
@@ -842,9 +853,6 @@ Target grade: 9 / 10
 - Several modules are now large (reservations.js ~1000 lines, the
   reservation and state dialogs ~700 and ~640). The responsibilities are
   still coherent, but navigation costs are rising.
-- The roadmap header drifted: it still said "specification phase" after
-  four schema versions and a complete working app. Documentation that is
-  not maintained costs more than no documentation.
 
 6.3 Ordered work that raises the grade
 Highest lift first. Each item must leave proof in the repository, not only
@@ -870,15 +878,23 @@ in a terminal transcript.
    - The roadmap header now reflects the implementation phase, and 2.6
      lists the test files and dev manifest.
 
-3. Make storage failure visible and recoverable
-   - On unreadable JSON, keep the raw payload, show a calm error, and
-     offer "Download saved data" and "Start empty" instead of silently
-     discarding everything.
-   - On write failure, surface a non-blocking banner ("Changes are not
-     being saved") rather than only commenting in the catch block.
-   - Add tests for corrupt data, wrong types, unavailable storage and
-     quota errors.
-   - Acceptance: no failure path loses data without telling the user.
+3. Make storage failure visible and recoverable — done 2026-11-12
+   - js/store.js owns every localStorage call and exposes a status on a
+     separate listener channel. An unreadable payload keeps its raw bytes
+     and blocks writes until the user downloads it or starts empty; blocked
+     reads and failed writes report their state instead of throwing.
+   - The storage banner shows "Saved data could not be read" with Download
+     saved data and an armed Start empty on corruption, and "Changes are
+     not being saved" on blocked or failed writes. A later successful write
+     clears it without repainting the desk or moving focus.
+   - tests/store.test.mjs covers corrupt JSON, non-object top-level values,
+     blocked storage, quota errors, a failed migration write-back and start
+     empty. tests/flows.mjs exercises the real banner, the download and the
+     recovery.
+   - Result: 64 domain/store checks and 75 browser checks pass (7 storage
+     cases and 12 flow checks were added).
+   - Acceptance met: no failure path discards or overwrites data without
+     telling the user first.
 
 4. Add export / restore
    - One button downloads the full state as JSON; one file input restores

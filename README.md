@@ -51,7 +51,9 @@ node --test
 ```
 
 It covers room timers, capacity and request fitting, group check-in,
-reservation editing and cancellation, and schema migrations from v1 to v4.
+reservation editing and cancellation, schema migrations from v1 to v4, and
+the storage failure paths (corrupt payloads, blocked storage and failed
+writes).
 
 The browser flow suite is optional and needs Playwright:
 
@@ -116,6 +118,24 @@ Schema v4 replaced the old single `roomType` with `roomCounts`, and replaced
 register `roomId`/`roomName` with `assignedRooms`. Migration is one-way and
 runs on load through `js/store.js`.
 
+### When saving fails
+
+`js/store.js` is the only module that touches `localStorage`. It reports a
+status to the UI instead of discarding or hiding failures:
+
+- **Unreadable data** — if the saved payload is not valid JSON, or not a JSON
+  object, the app starts with an empty desk but keeps the exact raw bytes. A
+  banner offers `Download saved data` and `Start empty`. Writes are blocked
+  while the payload is unresolved, so the saved copy cannot be overwritten by
+  accident.
+- **Blocked storage** — private mode or a browser policy that denies
+  `localStorage` starts the app in memory and shows the saving banner.
+- **Failed write** — a full quota or a refused write leaves the change visible
+  in the tab and shows `Changes are not being saved`. The next successful
+  write clears it.
+
+The banner is non-blocking; the desk keeps working while it is visible.
+
 ## Where things live
 
 ```text
@@ -123,13 +143,15 @@ index.html               shell and semantic markup
 css/tokens.css           palette, spacing and type scale
 css/app.css              layout and components
 js/app.js                bootstrap and repaint wiring
-js/store.js              state container, persistence and migrations
+js/store.js              state container, persistence, migrations and status
+js/components/storage-banner.js  storage recovery and saving banner
 js/rooms.js              room types, states and timers
 js/reservations.js       availability, bookings, check-in and history
 js/ticker.js             scheduled reconciliation and repaints
 js/views/front-desk.js   the single screen
 js/components/           render helpers and dialogs
 tests/domain.test.mjs    dependency-free domain checks
+tests/store.test.mjs     storage failure and recovery checks
 tests/flows.mjs          optional Playwright flow checks
 package.json             dev commands; no dependencies
 roadmap.txt              rules, spec, decisions, dev log and open work
@@ -137,8 +159,10 @@ roadmap.txt              rules, spec, decisions, dev log and open work
 
 ## Known limitations
 
-- One browser profile and one origin. There is no sync and no backup/export
-  yet; clearing site data deletes the property.
+- One browser profile and one origin. There is no sync and no general
+  export/restore yet; clearing site data deletes the property. An unreadable
+  payload can be downloaded from the recovery banner, but that is not a
+  backup.
 - Deleting a room does not yet check whether a pending reservation still
   needs it.
 - Register history has no pruning or filtering.

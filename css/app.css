@@ -56,6 +56,45 @@ p {
   text-align: center;
 }
 
+/* A storage problem sits above the view and never blocks it. */
+.storage-banner {
+  flex: 0 0 auto;
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+  padding:
+    calc(var(--space-3) + env(safe-area-inset-top))
+    var(--space-4)
+    var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+/* Author display overrides the UA rule behind the hidden attribute. */
+.storage-banner[hidden] {
+  display: none;
+}
+
+.storage-banner__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.storage-banner__text {
+  max-width: 60ch;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.storage-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
 @media (min-width: 720px) {
   .view {
     width: 100%;

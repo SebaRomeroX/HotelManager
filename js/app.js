@@ -1,4 +1,5 @@
 import * as frontDesk from "./views/front-desk.js";
+import "./components/storage-banner.js";
 import { subscribe } from "./store.js";
 import { subscribeTick } from "./ticker.js";
 
