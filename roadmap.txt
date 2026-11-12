@@ -102,6 +102,10 @@ Nothing else is in scope until these three are working.
   js/store.js           state container and persistence
   js/views/*.js         one module per screen
   js/components/*.js    small reusable render helpers
+  tests/domain.test.mjs dependency-free domain checks (node:test)
+  tests/flows.mjs       optional Playwright browser flow checks
+  package.json          dev commands only; no dependencies
+  README.md             quick start, data model, tests and limitations
   roadmap.txt           this file
 
   Folders appear as they are needed, not in advance.
@@ -770,6 +774,14 @@ Newest entries at the bottom.
             anything. The app still runs without Node or any package; the
             manifest is dev-time only.
 
+2026-11-12  README.md now carries the front door: run command, test
+            commands, schema version and data shapes, file map, and known
+            limitations. It states that localStorage is scoped per origin,
+            so switching between localhost, 127.0.0.1 or a port is not a
+            harmless change of address. The roadmap file map now lists the
+            tests, package.json and README. why: a clean clone had the
+            evidence but no instructions for finding or running it.
+
 ================================================================
 4. TODO TASKS
 ================================================================
@@ -815,8 +827,6 @@ Target grade: 9 / 10
 - The test suite is young. It proves the domain and the main flows, but the
   storage failure paths (item 3) and the accessibility checklist (item 6)
   are still unverified.
-- There is no README. A new reader cannot find the run command, the data
-  model, the schema version, or the test commands from the repository.
 - Saved data can fail silently. A corrupt localStorage payload becomes an
   empty app, and a quota/private-mode write failure only leaves a comment
   in the code. For a single-copy local app that is the biggest reliability
@@ -851,13 +861,14 @@ in a terminal transcript.
    - Result: 57 domain checks pass on a clean clone, plus 63 browser checks
      when Playwright is available.
 
-2. Add a README and keep this roadmap current
-   - State what the app is, how to serve it (`python3 -m http.server`),
-     how to run tests, the schema version, the data model, and the known
-     limitations (one browser, no backup, no multi-user).
-   - Add a short "where things live" map matching section 2.6.
-   - Acceptance: a reader can run and test the app without opening the
-     source. The header is updated whenever a feature lands.
+2. Add a README and keep this roadmap current — done 2026-11-12
+   - README.md covers what the app is, the HTTP server command, the test
+     commands, the schema version and data shapes, the file map, and the
+     known limitations.
+   - It repeats the origin rule: localStorage is scoped per origin, so
+     localhost, 127.0.0.1 and another port are separate stores.
+   - The roadmap header now reflects the implementation phase, and 2.6
+     lists the test files and dev manifest.
 
 3. Make storage failure visible and recoverable
    - On unreadable JSON, keep the raw payload, show a calm error, and
