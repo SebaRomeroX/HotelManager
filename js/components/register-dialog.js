@@ -166,12 +166,22 @@ function entryRow(entry) {
 
   item.append(head, meta);
 
-  // The room only exists for check-ins; migration-era entries never had one
-  // linked, so they simply omit the line.
-  if (entry.roomName) {
+  // Check-ins carry every room in the reservation. Migration-era entries used
+  // one roomName; keep that fallback so old history still names its room.
+  const assigned = Array.isArray(entry.assignedRooms)
+    ? entry.assignedRooms
+    : [];
+  const names = assigned.map((room) => room.name).filter(Boolean);
+  if (names.length > 0) {
     const room = document.createElement("p");
     room.className = "register-entry__room";
-    room.textContent = entry.roomName;
+    room.textContent =
+      `${names.length === 1 ? "Room" : "Rooms"}: ${names.join(", ")}`;
+    item.append(room);
+  } else if (entry.roomName) {
+    const room = document.createElement("p");
+    room.className = "register-entry__room";
+    room.textContent = `Room: ${entry.roomName}`;
     item.append(room);
   }
 

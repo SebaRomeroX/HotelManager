@@ -1,21 +1,24 @@
 import { getState, update } from "../store.js";
-import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS, typeLabel } from "../rooms.js";
+import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS } from "../rooms.js";
 import {
   RESERVATION_NAME_MAX,
   addReservation,
-  arrivingAssignment,
+  arrivingRoomIds,
   bookableRoomTypes,
   checkInReservation,
   formatDate,
   isArrivingNow,
   isReadOnlyReservation,
-  maxStayDays,
-  occupancyConflict,
+  maxStayDaysForRequest,
+  occupancyConflictForRooms,
   parseDate,
   removeReservation,
   reservationAvailabilityError,
   reservationError,
   reservationMeta,
+  reservationRoomCounts,
+  reservationRoomTotal,
+  roomCountsLabel,
   updateReservation,
 } from "../reservations.js";
 
@@ -31,14 +34,24 @@ dialog.innerHTML = `
 
   <div class="dialog__body">
     <form class="form" novalidate>
-      <fieldset class="field field--group">
-        <legend class="field__label">Room type</legend>
-        <div class="segmented">
+      <fieldset class="field field--group" data-rooms-field>
+        <legend class="field__label">Rooms</legend>
+        <div class="room-counts">
           ${ROOM_TYPES.map(
             (type) => `
-          <label class="segmented__option">
-            <input type="radio" name="roomType" value="${type.value}" required>
+          <label class="room-counts__field">
             <span>${type.label}</span>
+            <input
+              class="input room-counts__input"
+              type="number"
+              name="roomCount-${type.value}"
+              data-room-count="${type.value}"
+              min="0"
+              step="1"
+              inputmode="numeric"
+              autocomplete="off"
+              aria-label="${type.label} rooms"
+            >
           </label>`,
           ).join("")}
         </div>
@@ -125,7 +138,7 @@ const cancelResButton = dialog.querySelector("[data-cancel-res]");
 const hostHint = dialog.querySelector("[data-host]");
 const metaHint = dialog.querySelector("[data-meta]");
 const stayHint = dialog.querySelector("[data-stay-hint]");
-const typeField = dialog.querySelector("fieldset");
+const roomsField = dialog.querySelector("[data-rooms-field]");
 const checkinBlock = dialog.querySelector("[data-checkin]");
 const checkinButton = dialog.querySelector("[data-checkin-btn]");
 const checkinError = dialog.querySelector("[data-checkin-error]");
@@ -133,6 +146,9 @@ const checkinError = dialog.querySelector("[data-checkin-error]");
 // Edit state is transient UI, so it stays here instead of going in the store.
 let editingId = null;
 let confirmingCancel = false;
+// A filter-originated booking clears the calendar request only once the write
+// has passed every check. Kept transient like the rest of the sheet state.
+let beforeSave = null;
 // Which control owns the visible error, so typing there can clear it.
 let errorField = null;
 // Date whose calendar cell takes focus after the sheet closes — a booking
@@ -142,16 +158,31 @@ let focusDate = null;
 // the Incoming button); preferred over the calendar fallback.
 let focusSelector = null;
 
-// A radio group comes back from form.elements as a RadioNodeList — not an
-// element, so it has no setAttribute/focus of its own. Every roomType problem
-// now reaches here (the availability guard), so unwrap groups to their inputs.
+// The room-count inputs are a group, not one named control. A "rooms" problem
+// reaches all of them so the error is attached to every count.
+function roomCountInputs() {
+  return [...form.querySelectorAll("[data-room-count]")];
+}
+
 function controlsFor(name) {
+  if (name === "rooms") return roomCountInputs();
+
   const control = form.elements[name];
   if (!control) return [];
   return typeof control.setAttribute === "function" ? [control] : [...control];
 }
 
 function focusField(name) {
+  if (name === "rooms") {
+    const inputs = roomCountInputs();
+    (
+      inputs.find((input) => !input.disabled && Number(input.value) > 0) ??
+      inputs.find((input) => !input.disabled) ??
+      inputs[0]
+    )?.focus();
+    return;
+  }
+
   const [first, ...rest] = controlsFor(name);
   if (!first) return;
   (first.checked ? first : rest.find((input) => input.checked) ?? first).focus();
@@ -181,7 +212,8 @@ function setError(problem) {
 
 // Typing can clear a problem, so stale red must go the moment a field changes.
 function clearErrorFor(target) {
-  if (!errorText.hidden && target.name === errorField) setError(null);
+  const field = target.dataset.roomCount ? "rooms" : target.name;
+  if (!errorText.hidden && field === errorField) setError(null);
 }
 
 function resetCancelConfirm() {
@@ -195,14 +227,49 @@ function clearCheckinError() {
   checkinError.textContent = "";
 }
 
-function typeRadios() {
-  return [...form.querySelectorAll('input[name="roomType"]')];
+function roomTotals(rooms) {
+  const totals = Object.fromEntries(ROOM_TYPES.map(({ value }) => [value, 0]));
+  for (const room of rooms) {
+    if (room.type in totals) totals[room.type] += 1;
+  }
+  return totals;
+}
+
+function readRoomCount(input) {
+  const raw = input.value.trim();
+  if (raw === "") return 0;
+
+  const value = Number(raw);
+  return Number.isInteger(value) && value >= 0 ? value : NaN;
+}
+
+function roomCountsFromForm() {
+  return Object.fromEntries(
+    roomCountInputs().map((input) => [
+      input.dataset.roomCount,
+      readRoomCount(input),
+    ]),
+  );
+}
+
+function chosenRoomTotal(counts) {
+  return ROOM_TYPES.reduce((sum, { value }) => {
+    const count = counts[value];
+    return sum + (Number.isInteger(count) && count > 0 ? count : 0);
+  }, 0);
+}
+
+function setRoomCounts(counts) {
+  for (const input of roomCountInputs()) {
+    const count = Number(counts?.[input.dataset.roomCount] ?? 0);
+    input.value = String(Number.isInteger(count) && count > 0 ? count : 0);
+  }
 }
 
 // New bookings only: a type with no room left on the chosen date cannot be
 // picked, so the form never offers a choice the guard would refuse. Edits keep
 // every type live because the record's own hold must not hide its type.
-// The duration hint always follows the selected type and date.
+// The duration hint always follows the whole request and date.
 function syncAvailabilityHints() {
   if (readOnly()) {
     stayHint.hidden = true;
@@ -211,17 +278,32 @@ function syncAvailabilityHints() {
 
   const state = getState();
   const current = editingId === null ? undefined : findEditing();
+  const totals = roomTotals(state.rooms ?? []);
   const date = parseDate(dateInput.value);
   let bookable = null;
 
   if (editingId === null) {
     bookable = date ? bookableRoomTypes(state, dateInput.value, { current }) : null;
 
-    for (const radio of typeRadios()) {
-      const unavailable = bookable !== null && !bookable.includes(radio.value);
-      radio.disabled = unavailable;
-      if (unavailable && radio.checked) radio.checked = false;
+    for (const input of roomCountInputs()) {
+      const type = input.dataset.roomCount;
+      const unavailable =
+        bookable !== null && (!bookable.includes(type) || (totals[type] ?? 0) === 0);
+      input.disabled = unavailable;
+      // A type that has no room on the new date must not keep a stale count.
+      if (unavailable) input.value = "0";
     }
+  } else {
+    for (const input of roomCountInputs()) input.disabled = false;
+  }
+
+  const existing = current ? reservationRoomCounts(current) : null;
+  for (const input of roomCountInputs()) {
+    const type = input.dataset.roomCount;
+    // Keep an edit's existing count selectable even if rooms were removed since
+    // the booking; the guard can still refuse an impossible increase.
+    const max = Math.max(totals[type] ?? 0, existing?.[type] ?? 0);
+    input.max = String(max);
   }
 
   if (!date) {
@@ -235,21 +317,21 @@ function syncAvailabilityHints() {
     return;
   }
 
-  const type = form.elements.roomType.value;
-  if (!type) {
-    stayHint.textContent = "Choose a room type to see the longest stay.";
+  const counts = roomCountsFromForm();
+  if (chosenRoomTotal(counts) === 0) {
+    stayHint.textContent = "Choose at least one room to see the longest stay.";
     stayHint.hidden = false;
     return;
   }
 
-  const days = maxStayDays(state, type, dateInput.value, { current });
+  const days = maxStayDaysForRequest(state, counts, dateInput.value, { current });
   if (days === 0) {
     stayHint.textContent =
-      `No ${typeLabel(type)} room is free on ${formatDate(dateInput.value)}.`;
+      `This request cannot start on ${formatDate(dateInput.value)}.`;
   } else {
     stayHint.textContent =
-      `Up to ${days} ${days === 1 ? "day" : "days"} for ${typeLabel(type)} from ` +
-      `${formatDate(dateInput.value)}.`;
+      `Up to ${days} ${days === 1 ? "day" : "days"} for ` +
+      `${roomCountsLabel(counts)} from ${formatDate(dateInput.value)}.`;
   }
   stayHint.hidden = false;
 }
@@ -282,7 +364,7 @@ function syncMode() {
   metaHint.hidden = !readonly;
 
   // Read-only hides the whole form: static lines instead of inputs.
-  typeField.hidden = readonly;
+  roomsField.hidden = readonly;
   dateInput.closest(".field").hidden = readonly;
   daysInput.closest(".field").hidden = readonly;
   addButton.hidden = readonly;
@@ -337,9 +419,10 @@ function resetForm() {
   setError(null);
   clearCheckinError();
 
-  // Reset leaves disabled alone, so clear the previous sheet's availability
-  // state by hand; syncAvailabilityHints below sets it for today.
-  for (const radio of typeRadios()) radio.disabled = false;
+  // Reset leaves disabled alone and clears the count inputs, so write the
+  // canonical zero request and let syncAvailabilityHints set today's limits.
+  for (const input of roomCountInputs()) input.disabled = false;
+  setRoomCounts({ small: 0, large: 0, suite: 0 });
 
   // A reservation books a night to come, so the picker opens on today and
   // refuses anything earlier at both the input and the validator.
@@ -356,15 +439,12 @@ function prefill() {
   const reservation = findEditing();
   if (!reservation) return;
 
-  const radio = form.querySelector(
-    `input[name="roomType"][value="${reservation.roomType}"]`,
-  );
-  if (radio) radio.checked = true;
+  setRoomCounts(reservationRoomCounts(reservation));
 
   // Read-only never reaches here, so the date is always a night to come.
   dateInput.value = reservation.arrivalDate;
   daysInput.value = String(reservation.days);
-  addButton.disabled = false;
+  addButton.disabled = reservationRoomTotal(reservation) === 0;
   syncArrivalActions();
 }
 
@@ -373,23 +453,27 @@ function readValues() {
     // Edit mode sends the stored name: the hint is not a field, so what the
     // validator sees is what is already on the record.
     hostName: editingId === null ? nameInput.value : findEditing()?.hostName ?? "",
-    roomType: form.elements.roomType.value,
+    roomCounts: roomCountsFromForm(),
     arrivalDate: dateInput.value,
     days: daysInput.value,
   };
 }
 
 form.addEventListener("change", (event) => {
-  if (event.target.name === "arrivalDate" || event.target.name === "roomType") {
+  if (event.target.name === "arrivalDate" || event.target.dataset.roomCount) {
     syncAvailabilityHints();
   }
-  addButton.disabled = form.elements.roomType.value === "";
+  addButton.disabled = chosenRoomTotal(roomCountsFromForm()) === 0;
   syncArrivalActions();
   clearCheckinError();
   clearErrorFor(event.target);
 });
 
 form.addEventListener("input", (event) => {
+  if (event.target.dataset.roomCount) {
+    addButton.disabled = chosenRoomTotal(roomCountsFromForm()) === 0;
+    syncArrivalActions();
+  }
   clearCheckinError();
   clearErrorFor(event.target);
 });
@@ -427,10 +511,25 @@ form.addEventListener("submit", (event) => {
   }
 
   if (editingId === null) {
-    update((state) => addReservation(state, values));
+    const before = getState();
+    const after = addReservation(before, values);
+    if (after === before) {
+      setError({ field: "rooms", message: "This reservation could not be saved." });
+      return;
+    }
+    // A filter-originated booking clears its search only now, with the write
+    // already known to be valid. The store repaint then draws the normal view.
+    beforeSave?.();
+    update(() => after);
   } else {
     const id = editingId;
-    update((state) => updateReservation(state, id, values));
+    const before = getState();
+    const after = updateReservation(before, id, values);
+    if (after === before) {
+      setError({ field: "rooms", message: "This reservation could not be saved." });
+      return;
+    }
+    update(() => after);
   }
 
   dialog.close();
@@ -503,21 +602,23 @@ checkinButton.addEventListener("click", () => {
     return;
   }
 
-  // Which room holds this booking in the draft — the domain re-derives it,
+  // Which rooms hold this booking in the draft — the domain re-derives them,
   // this is only to pick the right message when something is in the way.
-  const heldRoomId = [...arrivingAssignment(draft, now)].find(
-    ([, held]) => held.id === id,
-  )?.[0];
+  const needed = reservationRoomTotal(reservation);
+  const roomIds = arrivingRoomIds(draft, id, now);
 
-  if (heldRoomId === undefined) {
-    checkinError.textContent = `No free ${typeLabel(reservation.roomType)} room right now.`;
+  if (roomIds.length < needed) {
+    checkinError.textContent =
+      needed === 1
+        ? "No free room for this reservation right now."
+        : `Only ${roomIds.length} of ${needed} rooms are free right now.`;
     checkinError.hidden = false;
     return;
   }
 
-  const conflict = occupancyConflict(
+  const conflict = occupancyConflictForRooms(
     draft,
-    heldRoomId,
+    roomIds,
     reservation.days,
     now,
     { exceptId: id },
@@ -534,11 +635,12 @@ checkinButton.addEventListener("click", () => {
 
   if (after === draft) {
     // Belt: the domain refused for one of its own reasons.
-    checkinError.textContent = `No free ${typeLabel(reservation.roomType)} room right now.`;
+    checkinError.textContent = "Those rooms are not free right now.";
     checkinError.hidden = false;
     return;
   }
 
+  beforeSave?.();
   update(() => after);
   dialog.close();
 });
@@ -571,6 +673,7 @@ dialog.addEventListener("close", () => {
   const date = focusDate;
   const selector = focusSelector;
   editingId = null;
+  beforeSave = null;
   focusDate = null;
   focusSelector = null;
   resetForm();
@@ -606,18 +709,27 @@ export function openReservationDialog(reservationId = null, options = {}) {
   resetForm();
   focusDate = options.arrivalDate ?? findEditing()?.arrivalDate ?? null;
   focusSelector = options.focusSelector ?? null;
+  beforeSave = options.beforeSave ?? null;
 
   // Calendar shortcut: start a booking for the night that was tapped. A past
   // date would be refused by the validator anyway — min already says no.
-  if (editingId === null && options.arrivalDate) {
-    if (options.arrivalDate >= dateInput.min) {
+  if (editingId === null) {
+    if (options.arrivalDate && options.arrivalDate >= dateInput.min) {
       dateInput.value = options.arrivalDate;
     }
-  } else if (editingId !== null && !readonly) {
+    if (options.roomCounts) {
+      setRoomCounts(reservationRoomCounts({ roomCounts: options.roomCounts }));
+    }
+    const days = Number(options.days);
+    if (Number.isInteger(days) && days >= STAY_MIN_DAYS && days <= STAY_MAX_DAYS) {
+      daysInput.value = String(days);
+    }
+  } else if (!readonly) {
     prefill();
   }
 
   syncAvailabilityHints();
+  addButton.disabled = chosenRoomTotal(roomCountsFromForm()) === 0;
   syncArrivalActions();
   dialog.showModal();
   if (editingId === null) {
@@ -628,12 +740,8 @@ export function openReservationDialog(reservationId = null, options = {}) {
       // they came for.
       checkinButton.focus();
     } else {
-      // First checked radio, else the first one: a comma selector alone would
-      // return the topmost option regardless of which one is checked.
-      const typeRadio =
-        form.querySelector('input[name="roomType"]:checked') ??
-        form.querySelector('input[name="roomType"]');
-      typeRadio?.focus();
+      // The counts are the first editable part of the stay.
+      roomCountInputs()[0]?.focus();
     }
   }
   // Read-only leaves the browser's own focus on the header Close button.

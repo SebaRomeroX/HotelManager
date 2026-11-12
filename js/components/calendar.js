@@ -1,7 +1,12 @@
 import { getState } from "../store.js";
 import { ROOM_TYPES, STAY_MAX_DAYS, STAY_MIN_DAYS } from "../rooms.js";
-import { availabilityOn, requestFitsOn } from "../reservations.js";
+import {
+  availabilityOn,
+  requestFitsOn,
+  roomCountsLabel,
+} from "../reservations.js";
 import { openAvailabilityDialog } from "./availability-dialog.js";
+import { openReservationDialog } from "./reservation-dialog.js";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -268,7 +273,13 @@ function dayCell(view, day, today) {
   const base = isToday
     ? `Today, ${MONTHS[view.month]} ${day}`
     : `${MONTHS[view.month]} ${day}`;
-  const action = isToday ? "view room states" : "view details";
+  const action = active
+    ? fits
+      ? "start a reservation"
+      : "view details"
+    : isToday
+      ? "view room states"
+      : "view details";
 
   if (active) {
     cell.setAttribute(
@@ -281,7 +292,22 @@ function dayCell(view, day, today) {
       `${base}, ${free} room${free === 1 ? "" : "s"} free — ${action}`,
     );
   }
-  cell.addEventListener("click", () => openAvailabilityDialog(iso, cell));
+  cell.addEventListener("click", () => {
+    // A fitting date under an active request is a booking shortcut: take the
+    // whole request straight into the reservation sheet. Non-fitting dates keep
+    // their details sheet so the desk can see why they are muted.
+    if (active && fits) {
+      openReservationDialog(null, {
+        arrivalDate: iso,
+        roomCounts: { ...request.counts },
+        days: request.days,
+        beforeSave: clearRequest,
+      });
+      return;
+    }
+
+    openAvailabilityDialog(iso, cell);
+  });
 
   const number = document.createElement("span");
   number.className = "cal-cell__day";
@@ -342,26 +368,23 @@ function requestIsActive() {
   );
 }
 
-// A sentence-shaped summary, e.g. "1 Suite and 2 Small rooms for 3 days".
+// A sentence-shaped summary, e.g. "3 Small rooms for 4 days".
 function requestLabel() {
-  const parts = ROOM_TYPES
-    .filter(({ value }) => (request.counts[value] ?? 0) > 0)
-    .map(({ value, label }) => {
-      const count = request.counts[value];
-      if (value === "suite") {
-        return `${count} ${count === 1 ? "Suite" : "Suites"}`;
-      }
-      return `${count} ${label} ${count === 1 ? "room" : "rooms"}`;
-    });
-
   const days = request.days === 1 ? "day" : "days";
-  return `${joinWithAnd(parts)} for ${request.days} ${days}`;
+  return `${roomCountsLabel(request.counts)} for ${request.days} ${days}`;
 }
 
-function joinWithAnd(parts) {
-  if (parts.length <= 1) return parts[0] ?? "";
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+// The filter is a transient search. Clear leaves the panel open so the desk can
+// refine it; a successful booking closes it and returns the calendar to its
+// normal free-room view.
+function resetRequestValues() {
+  request.counts = { small: 0, large: 0, suite: 0 };
+  request.days = STAY_MIN_DAYS;
+}
+
+function clearRequest() {
+  resetRequestValues();
+  filterOpen = false;
 }
 
 function statusText(view, today) {
@@ -445,8 +468,7 @@ function filterBlock(section, view, today) {
   clear.textContent = "Clear";
   clear.hidden = !requestIsActive();
   clear.addEventListener("click", () => {
-    request.counts = { small: 0, large: 0, suite: 0 };
-    request.days = STAY_MIN_DAYS;
+    resetRequestValues();
     const fresh = renderCalendar();
     section.replaceWith(fresh);
     // Clear hides itself once the request is gone; land focus on the first

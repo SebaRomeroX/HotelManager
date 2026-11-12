@@ -3,10 +3,11 @@ import {
   isPastReservation,
   noShowCutoff,
   registerEntry,
+  reservationRoomCounts,
 } from "./reservations.js";
 
 const STORAGE_KEY = "hotelmanager:state";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 const listeners = new Set();
 
@@ -25,6 +26,29 @@ function validStamp(value) {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+// Version 4 replaced the single roomType with whole-number counts per type.
+// One-way: the old key disappears, and history keeps physical room names in
+// assignedRooms instead of roomId/roomName.
+function normalizeCounts(record) {
+  const { roomType, ...rest } = record;
+  return { ...rest, roomCounts: reservationRoomCounts(record) };
+}
+
+function normalizeRegisterEntry(entry) {
+  const legacyType = entry.roomType ?? null;
+  const { roomId, roomName, ...rest } = normalizeCounts(entry);
+
+  let assignedRooms = Array.isArray(entry.assignedRooms)
+    ? entry.assignedRooms.map(({ id, name, type }) => ({ id, name, type }))
+    : [];
+
+  if (roomName) {
+    assignedRooms = [{ id: roomId ?? null, name: roomName, type: legacyType }];
+  }
+
+  return { ...rest, assignedRooms };
 }
 
 export function migrate(state, now = new Date()) {
@@ -78,6 +102,22 @@ export function migrate(state, now = new Date()) {
     }
 
     next = { ...next, reservations: active, register };
+  }
+
+  // Version 4 gives a reservation many rooms: counts per type on the record,
+  // and every physical room named in a checked-in register snapshot. Legacy
+  // single-room records are converted in place so no reader has to special-case
+  // the old shape after migration.
+  if (!(next.version >= 4)) {
+    next = {
+      ...next,
+      reservations: Array.isArray(next.reservations)
+        ? next.reservations.map(normalizeCounts)
+        : [],
+      register: Array.isArray(next.register)
+        ? next.register.map(normalizeRegisterEntry)
+        : [],
+    };
   }
 
   return {

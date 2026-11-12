@@ -718,6 +718,35 @@ Newest entries at the bottom.
             open/closed choice survives month changes and store repaints, but
             a reload closes it along with resetting the request.
 
+2026-11-12  Reservations now hold several rooms under one name. The old single
+            roomType became whole-number counts per type (roomCounts: { small,
+            large, suite }); mixed types are allowed, and the counts are
+            exactly what the booking form shows. Everything derived follows the
+            counts: pendingOn sums a booking's full count on each night instead
+            of counting records, availability and the booking guard check every
+            type/night pair, and maxStayDaysForRequest walks the whole request
+            rather than one room. The list, sheet and register share one
+            roomCountsLabel ("3 Small rooms", "2 Small rooms and 1 Suite").
+            why: a family or a group books together, and splitting one stay
+            into several records would make the register and check-in lie.
+
+            A fitting date under the Find a stay filter now opens the
+            reservation sheet prefilled with the request's date, counts and
+            duration, instead of the read-only day sheet. That supersedes the
+            earlier note that the filter was planning-only. The request is
+            cleared only after the booking has passed every check and been
+            written, so a refused save leaves the search intact. Non-fitting
+            dates still open the availability breakdown, which explains why
+            they are muted. Checking in any held room checks in the entire
+            reservation atomically: the arrival sheet names every room and the
+            store moves them all to occupied in one write. The register entry
+            snapshots assignedRooms ([{ id, name, type }]), so history keeps
+            the names the rooms had at check-in. Schema v4 migrates legacy
+            roomType records into one count and legacy roomId/roomName register
+            fields into a one-room snapshot; readers no longer special-case
+            either shape. Check-in refuses when even one requested room is not
+            free, and the days hint says so before the desk tries.
+
 ================================================================
 4. TODO TASKS
 ================================================================

@@ -68,6 +68,54 @@ export function formatDate(value) {
   return `${MONTHS[date.getMonth()]} ${date.getDate()}`;
 }
 
+// A booking holds a whole-number count of each room type. Records written
+// before multi-room reservations carry one `roomType` instead; every reader
+// goes through here so both shapes behave the same until migration runs.
+export function reservationRoomCounts(record) {
+  const counts = Object.fromEntries(ROOM_TYPES.map(({ value }) => [value, 0]));
+  const source = record?.roomCounts;
+
+  if (source && typeof source === "object" && !Array.isArray(source)) {
+    for (const { value } of ROOM_TYPES) {
+      const count = Number(source[value] ?? 0);
+      counts[value] = Number.isInteger(count) && count > 0 ? count : 0;
+    }
+    return counts;
+  }
+
+  if (ROOM_TYPES.some(({ value }) => value === record?.roomType)) {
+    counts[record.roomType] = 1;
+  }
+  return counts;
+}
+
+export function reservationRoomTotal(record) {
+  const counts = reservationRoomCounts(record);
+  return ROOM_TYPES.reduce((sum, { value }) => sum + counts[value], 0);
+}
+
+function joinWithAnd(parts) {
+  if (parts.length <= 1) return parts[0] ?? "";
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+}
+
+// "3 Small rooms", "1 Suite and 2 Small rooms" — the one wording used by the
+// list, register, dialogs and filter summary.
+export function roomCountsLabel(counts) {
+  const parts = ROOM_TYPES
+    .filter(({ value }) => (counts?.[value] ?? 0) > 0)
+    .map(({ value, label }) => {
+      const count = counts[value];
+      if (value === "suite") {
+        return `${count} ${count === 1 ? "Suite" : "Suites"}`;
+      }
+      return `${count} ${label} ${count === 1 ? "room" : "rooms"}`;
+    });
+
+  return joinWithAnd(parts) || "No rooms";
+}
+
 // The first problem with a set of values, as { field, message } where field
 // names a form control; null when valid. Shared by the dialog (to show and
 // focus the error) and addReservation/updateReservation (to refuse the write),
@@ -85,8 +133,22 @@ export function reservationError(values, today = new Date(), { currentDate } = {
     return { field: "hostName", message: "That host name is too long." };
   }
 
-  if (!ROOM_TYPES.some((type) => type.value === values.roomType)) {
-    return { field: "roomType", message: "Choose a room type." };
+  // The form sends one count per type. Reject fractions and negatives rather
+  // than silently rounding them into a different booking.
+  const counts =
+    values.roomCounts ??
+    (values.roomType ? { [values.roomType]: 1 } : {});
+  let rooms = 0;
+  for (const { value } of ROOM_TYPES) {
+    const count = counts[value] ?? 0;
+    if (!Number.isInteger(count) || count < 0) {
+      return { field: "rooms", message: "Enter whole room counts." };
+    }
+    rooms += count;
+  }
+
+  if (rooms < 1) {
+    return { field: "rooms", message: "Choose at least one room." };
   }
 
   const arrival = parseDate(values.arrivalDate);
@@ -204,7 +266,7 @@ export function reservationMeta(reservation) {
   const checkout = checkoutDate(reservation.arrivalDate, reservation.days);
   const days = `${reservation.days} ${reservation.days === 1 ? "day" : "days"}`;
   return (
-    `${typeLabel(reservation.roomType)} · ` +
+    `${roomCountsLabel(reservationRoomCounts(reservation))} · ` +
     `${formatDate(reservation.arrivalDate)} → ${formatDate(checkout)} · ${days}`
   );
 }
@@ -225,20 +287,16 @@ export function registerStatusLabel(status) {
 export function registerEntry(
   reservation,
   status,
-  { registeredAt = new Date().toISOString(), room = null } = {},
+  { registeredAt = new Date().toISOString(), assignedRooms = [] } = {},
 ) {
   const entry = {
     ...reservation,
     status,
     registeredAt,
+    // Check-ins remember every room that took the stay; the room may be
+    // renamed or deleted later, so the entry carries the names it had then.
+    assignedRooms: assignedRooms.map(({ id, name, type }) => ({ id, name, type })),
   };
-
-  // Check-ins remember which room took the stay; the room may be renamed or
-  // deleted later, so the entry carries the name it had at the time.
-  if (room) {
-    entry.roomId = room.id;
-    entry.roomName = room.name;
-  }
 
   return entry;
 }
@@ -310,7 +368,7 @@ export function addReservation(state, values, today = new Date()) {
   const reservation = {
     id: newId(),
     hostName: values.hostName.trim(),
-    roomType: values.roomType,
+    roomCounts: reservationRoomCounts(values),
     arrivalDate: values.arrivalDate,
     days: Number(values.days),
     createdAt: new Date().toISOString(),
@@ -342,7 +400,7 @@ export function updateReservation(state, id, values, today = new Date()) {
       reservation.id === id
         ? {
             ...reservation,
-            roomType: values.roomType,
+            roomCounts: reservationRoomCounts(values),
             arrivalDate: values.arrivalDate,
             days: Number(values.days),
             updatedAt: new Date().toISOString(),
@@ -403,16 +461,8 @@ function byArrival(a, b) {
   );
 }
 
-// The booking a manual set-occupied would strand, or null. Simulates X taking
-// the stay from now, then asks for every booking X can no longer serve whether
-// some other room still can:
-//   in-window bookings hold a VACANT room right now — that is what the
-//     OCCUPIED - ARRIVING marker is — so they are counted, not matched: one
-//     vacant room short and the last booking in line is the one named
-//   future bookings need a room whose stay ends by their 10:00 line
-// Greedy and per-booking, the same standard arrivingAssignment holds itself.
-// exceptId is the booking taking X right now (check-in): it is not left
-// behind by its own move.
+// The booking a manual set-occupied would strand, or null. A single room is
+// just the one-room case of the group check below.
 export function occupancyConflict(
   state,
   roomId,
@@ -420,9 +470,25 @@ export function occupancyConflict(
   now = new Date(),
   { exceptId = null } = {},
 ) {
+  return occupancyConflictForRooms(state, [roomId], days, now, { exceptId });
+}
+
+// The group form of occupancyConflict. Taking several rooms at once must not
+// leave another arriving booking without a vacant room, nor a future booking
+// without enough rooms of its type on its arrival morning. Arrivals are counted
+// per room because one booking may now hold several; futures are checked one
+// booking at a time, the same looseness the single-room guard always had.
+export function occupancyConflictForRooms(
+  state,
+  roomIds,
+  days,
+  now = new Date(),
+  { exceptId = null } = {},
+) {
   const rooms = state.rooms ?? [];
-  const room = rooms.find((candidate) => candidate.id === roomId);
-  if (!room) return null;
+  const taking = new Set(roomIds);
+  if (roomIds.length === 0) return null;
+  if (roomIds.some((id) => !rooms.some((room) => room.id === id))) return null;
 
   const count = Number(days);
   if (!Number.isInteger(count) || count < STAY_MIN_DAYS || count > STAY_MAX_DAYS) {
@@ -430,12 +496,14 @@ export function occupancyConflict(
   }
 
   const expiry = stayExpiry(now.toISOString(), count);
+  const takenTypes = new Set(
+    rooms.filter((room) => taking.has(room.id)).map((room) => room.type),
+  );
 
   const arrivals = [];
   const futures = [];
   for (const reservation of state.reservations ?? []) {
     if (reservation.checkedInAt || reservation.id === exceptId) continue;
-    if (reservation.roomType !== room.type) continue;
 
     if (isArrivingNow(reservation, now)) {
       arrivals.push(reservation);
@@ -444,17 +512,26 @@ export function occupancyConflict(
     }
   }
 
-  if (arrivals.length > 0) {
+  for (const type of takenTypes) {
+    const needed = arrivals.reduce(
+      (sum, reservation) => sum + (reservationRoomCounts(reservation)[type] ?? 0),
+      0,
+    );
+    if (needed === 0) continue;
+
     const vacantLeft = rooms.filter(
       (candidate) =>
-        candidate.id !== roomId &&
-        candidate.type === room.type &&
-        candidate.state === "vacant",
+        candidate.type === type &&
+        candidate.state === "vacant" &&
+        !taking.has(candidate.id),
     ).length;
 
-    if (arrivals.length > vacantLeft) {
-      arrivals.sort(byArrival);
-      return arrivals[arrivals.length - 1];
+    if (needed > vacantLeft) {
+      const relevant = arrivals.filter(
+        (reservation) => (reservationRoomCounts(reservation)[type] ?? 0) > 0,
+      );
+      relevant.sort(byArrival);
+      return relevant[relevant.length - 1] ?? null;
     }
   }
 
@@ -462,15 +539,21 @@ export function occupancyConflict(
   for (const reservation of futures) {
     const line = parseDate(reservation.arrivalDate);
     line.setHours(DAY_BOUNDARY_HOUR, 0, 0, 0);
-    if (expiry <= line) continue; // X frees up in time
+    if (expiry <= line) continue; // the taken rooms free up in time
 
-    const saved = rooms.some(
-      (candidate) =>
-        candidate.id !== roomId &&
-        candidate.type === room.type &&
-        roomServes(candidate, reservation.arrivalDate),
-    );
-    if (!saved) return reservation;
+    const wanted = reservationRoomCounts(reservation);
+    for (const type of takenTypes) {
+      const needed = wanted[type] ?? 0;
+      if (needed === 0) continue;
+
+      const available = rooms.filter(
+        (candidate) =>
+          candidate.type === type &&
+          !taking.has(candidate.id) &&
+          roomServes(candidate, reservation.arrivalDate),
+      ).length;
+      if (available < needed) return reservation;
+    }
   }
 
   return null;
@@ -492,23 +575,28 @@ export function reservationAvailabilityError(state, values, { current } = {}) {
   });
   if (proposed.length === 0) return null;
 
+  const key = (shortage) => `${shortage.roomType}|${shortage.isoDate}`;
+
   if (current) {
     const existing = new Set(
-      overbookedNights(state, current, { exceptId: current.id }),
+      overbookedNights(state, current, { exceptId: current.id }).map(key),
     );
-    const worsened = proposed.find((night) => !existing.has(night));
+    const worsened = proposed.find((shortage) => !existing.has(key(shortage)));
     if (!worsened) return null;
-    return capacityError(values.roomType, worsened);
+    return capacityError(worsened);
   }
 
-  return capacityError(values.roomType, proposed[0]);
+  return capacityError(proposed[0]);
 }
 
-function capacityError(roomType, isoDate) {
-  return {
-    field: "roomType",
-    message: `No ${typeLabel(roomType)} room is free on ${formatDate(isoDate)}.`,
-  };
+function capacityError({ roomType, isoDate, left }) {
+  const label = typeLabel(roomType);
+  const message =
+    left > 0
+      ? `Only ${left} ${label} ${left === 1 ? "room is" : "rooms are"} free on ${formatDate(isoDate)}.`
+      : `No ${label} rooms are free on ${formatDate(isoDate)}.`;
+
+  return { field: "rooms", message };
 }
 
 // The nights a live stay occupies: from the calendar day it began (night-of
@@ -553,16 +641,22 @@ function sellableOn(state, roomType, night) {
   ).length;
 }
 
-// Pending bookings of the type already covering this night, ignoring the
-// record being edited. Checked-in records are skipped: their live stay already
-// removes the room from supply.
+// Pending rooms of the type already covering this night, ignoring the record
+// being edited. A multi-room booking contributes its full count, not one.
+// Checked-in records are skipped: their live stay already removes the room
+// from supply.
 function pendingOn(state, roomType, night, exceptId) {
-  return (state.reservations ?? []).filter((reservation) => {
-    if (reservation.checkedInAt || reservation.id === exceptId) return false;
-    if (reservation.roomType !== roomType) return false;
+  return (state.reservations ?? []).reduce((sum, reservation) => {
+    if (reservation.checkedInAt || reservation.id === exceptId) return sum;
+
+    const count = reservationRoomCounts(reservation)[roomType] ?? 0;
+    if (count === 0) return sum;
+
     const arrival = parseDate(reservation.arrivalDate);
-    return arrival !== null && occupiesNight(arrival, reservation.days, night);
-  }).length;
+    return arrival !== null && occupiesNight(arrival, reservation.days, night)
+      ? sum + count
+      : sum;
+  }, 0);
 }
 
 // Rooms still sellable for the type on this night once the other bookings are
@@ -584,25 +678,52 @@ export function bookableRoomTypes(state, isoDate, { current } = {}) {
   );
 }
 
-// The longest stay that can start on this date, capped at the year limit.
-// Zero means not even the first night has a room left. Each extra night is
-// tested against the same capacity line as the booking guard, so the hint can
-// never promise a duration the form would refuse.
-export function maxStayDays(state, roomType, isoDate, { current } = {}) {
+// The longest stay this whole request can start on this date, capped at the
+// year limit. Zero means not even the first night has enough rooms. Each extra
+// night is tested against the same capacity line as the booking guard, so the
+// hint can never promise a duration the form would refuse.
+export function maxStayDaysForRequest(
+  state,
+  roomCounts,
+  isoDate,
+  { current } = {},
+) {
   const arrival = parseDate(isoDate);
   if (!arrival) return 0;
+
+  const counts = reservationRoomCounts({ roomCounts });
+  const wanted = ROOM_TYPES.map(({ value }) => [value, counts[value]]).filter(
+    ([, count]) => count > 0,
+  );
+  if (wanted.length === 0) return 0;
 
   const exceptId = current?.id ?? null;
   for (let days = 1; days <= STAY_MAX_DAYS; days += 1) {
     const night = new Date(arrival);
     night.setDate(night.getDate() + days - 1);
-    if (capacityLeftOn(state, roomType, night, exceptId) < 1) return days - 1;
+    if (
+      wanted.some(
+        ([roomType, count]) => capacityLeftOn(state, roomType, night, exceptId) < count,
+      )
+    ) {
+      return days - 1;
+    }
   }
   return STAY_MAX_DAYS;
 }
 
-// Which nights of the proposal would be over capacity, as ISO dates in stay
-// order. The proposal itself counts as one more room on every night.
+// Single-type convenience for callers that predate multi-room requests.
+export function maxStayDays(state, roomType, isoDate, { current } = {}) {
+  return maxStayDaysForRequest(
+    state,
+    { [roomType]: 1 },
+    isoDate,
+    { current },
+  );
+}
+
+// Which type/night pairs of the proposal would be over capacity, in stay
+// order. The proposal itself counts as its full room count on every night.
 function overbookedNights(state, values, { exceptId = null } = {}) {
   const arrival = parseDate(values.arrivalDate);
   const days = Number(values.days);
@@ -615,12 +736,25 @@ function overbookedNights(state, values, { exceptId = null } = {}) {
     return [];
   }
 
+  const counts = reservationRoomCounts(values);
+  const wanted = ROOM_TYPES.map(({ value }) => [value, counts[value]]).filter(
+    ([, count]) => count > 0,
+  );
+
   const over = [];
   for (let index = 0; index < days; index += 1) {
     const night = new Date(arrival);
     night.setDate(night.getDate() + index);
-    if (capacityLeftOn(state, values.roomType, night, exceptId) < 1) {
-      over.push(toISODate(night));
+
+    for (const [roomType, count] of wanted) {
+      const left = capacityLeftOn(state, roomType, night, exceptId);
+      if (left < count) {
+        over.push({
+          roomType,
+          isoDate: toISODate(night),
+          left: Math.max(0, left),
+        });
+      }
     }
   }
   return over;
@@ -699,11 +833,13 @@ export function requestFitsOn(state, isoDate, { days, counts } = {}) {
   return true;
 }
 
-// Which free room each arriving booking holds, derived fresh on every render:
-// nothing is stored, so occupying, OOS-ing or cleaning the held room simply
-// moves the marker to the next free match with no write and no drift. Order
-// matters: the straddling no-show about to expire gets first pick, then the
-// stable list order the sections already show; rooms follow sortRooms.
+// Which free rooms each arriving booking holds, derived fresh on every render:
+// nothing is stored, so occupying, OOS-ing or cleaning a held room simply
+// moves the marker to the next free match with no write and no drift. A booking
+// reserves as many rooms as its counts ask for; partial assignment is possible
+// and checkInReservation refuses it. Order matters: the straddling no-show
+// about to expire gets first pick, then the stable list order the sections
+// already show; rooms follow sortRooms.
 export function arrivingAssignment(state, now = new Date()) {
   const assignment = new Map();
 
@@ -722,68 +858,84 @@ export function arrivingAssignment(state, now = new Date()) {
   const taken = new Set();
 
   for (const reservation of arriving) {
-    const room = free.find(
-      (candidate) =>
-        candidate.type === reservation.roomType && !taken.has(candidate.id),
-    );
-    if (!room) continue;
+    const counts = reservationRoomCounts(reservation);
 
-    taken.add(room.id);
-    assignment.set(room.id, reservation);
+    for (const { value } of ROOM_TYPES) {
+      for (let index = 0; index < counts[value]; index += 1) {
+        const room = free.find(
+          (candidate) =>
+            candidate.type === value && !taken.has(candidate.id),
+        );
+        if (!room) break;
+
+        taken.add(room.id);
+        assignment.set(room.id, reservation);
+      }
+    }
   }
 
   return assignment;
 }
 
-// One state transition: the room takes the stay timer exactly as a manual
-// set-occupied would — so the 10:00 boundary, the countdown label and the
-// night-of rule all apply from now — and the booking moves into the register
-// as checked-in. Refuses (same reference) unless the booking is inside its
-// arrival window and a free matching room is actually held for it.
+// Every room the derived assignment holds for one booking, in room order.
+export function arrivingRoomIds(state, id, now = new Date()) {
+  return [...arrivingAssignment(state, now)]
+    .filter(([, held]) => held.id === id)
+    .map(([roomId]) => roomId);
+}
+
+// One state transition: every assigned room takes the stay timer exactly as a
+// manual set-occupied would — so the 10:00 boundary, the countdown label and
+// the night-of rule all apply from now — and the booking moves into the
+// register as checked-in. Refuses (same reference) unless the booking is inside
+// its arrival window and every room it asks for is actually held for it.
 export function checkInReservation(state, id, now = new Date()) {
   const reservation = (state.reservations ?? []).find(
     (candidate) => candidate.id === id,
   );
   if (!reservation || !isArrivingNow(reservation, now)) return state;
 
-  let roomId = null;
-  for (const [heldRoomId, held] of arrivingAssignment(state, now)) {
-    if (held.id === id) {
-      roomId = heldRoomId;
-      break;
-    }
-  }
-  if (roomId === null) return state;
+  const needed = reservationRoomTotal(reservation);
+  const roomIds = arrivingRoomIds(state, id, now);
+  if (needed === 0 || roomIds.length < needed) return state;
 
   // The stay must not strand another booking — the same conflict the days
   // form shows an error for; here it is a same-reference refusal.
-  if (occupancyConflict(state, roomId, reservation.days, now, { exceptId: id })) {
+  if (
+    occupancyConflictForRooms(state, roomIds, reservation.days, now, {
+      exceptId: id,
+    })
+  ) {
     return state;
   }
 
-  const withStay = setRoomState(state, roomId, "occupied", {
-    days: reservation.days,
-    now,
-  });
-  // setRoomState refuses invalid day counts; never stamp a check-in the room
-  // did not take.
-  if (withStay === state) return state;
+  const days = Number(reservation.days);
+  if (!Number.isInteger(days) || days < STAY_MIN_DAYS || days > STAY_MAX_DAYS) {
+    return state;
+  }
 
-  const room = (withStay.rooms ?? []).find((candidate) => candidate.id === roomId);
+  let withStays = state;
+  for (const roomId of roomIds) {
+    withStays = setRoomState(withStays, roomId, "occupied", { days, now });
+  }
+
+  const assignedRooms = roomIds
+    .map((roomId) => (withStays.rooms ?? []).find((room) => room.id === roomId))
+    .filter(Boolean);
 
   return {
-    ...withStay,
+    ...withStays,
     // Check-in is a hand-over to housekeeping: the booking is history now. The
-    // room's live stay carries occupancy from here.
-    reservations: withStay.reservations.filter(
+    // rooms' live stays carry occupancy from here.
+    reservations: withStays.reservations.filter(
       (candidate) => candidate.id !== id,
     ),
     register: [
       registerEntry(reservation, "checked_in", {
         registeredAt: now.toISOString(),
-        room,
+        assignedRooms,
       }),
-      ...(withStay.register ?? []),
+      ...(withStays.register ?? []),
     ],
   };
 }

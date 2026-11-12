@@ -12,12 +12,17 @@ import {
 } from "../rooms.js";
 import {
   arrivingAssignment,
+  arrivingRoomIds,
   checkInReservation,
   checkoutDate,
   formatDate,
   occupancyConflict,
+  occupancyConflictForRooms,
   removeReservation,
   reservationMeta,
+  reservationRoomCounts,
+  reservationRoomTotal,
+  roomCountsLabel,
 } from "../reservations.js";
 
 const dialog = document.createElement("dialog");
@@ -58,8 +63,8 @@ dialog.innerHTML = `
             <dd data-fact-room></dd>
           </div>
           <div>
-            <dt>Room type</dt>
-            <dd data-fact-type></dd>
+            <dt>Rooms</dt>
+            <dd data-fact-rooms></dd>
           </div>
           <div>
             <dt>Arrives</dt>
@@ -74,6 +79,8 @@ dialog.innerHTML = `
             <dd data-fact-days></dd>
           </div>
         </dl>
+
+        <p class="hint" data-arrival-group hidden></p>
 
         <p class="error" data-arrival-error role="alert" hidden></p>
 
@@ -182,10 +189,11 @@ const confirmCheckin = dialog.querySelector("[data-confirm-checkin]");
 const arrivalError = dialog.querySelector("[data-arrival-error]");
 const factHost = dialog.querySelector("[data-fact-host]");
 const factRoom = dialog.querySelector("[data-fact-room]");
-const factType = dialog.querySelector("[data-fact-type]");
+const factRooms = dialog.querySelector("[data-fact-rooms]");
 const factArrival = dialog.querySelector("[data-fact-arrival]");
 const factCheckout = dialog.querySelector("[data-fact-checkout]");
 const factDays = dialog.querySelector("[data-fact-days]");
+const arrivalGroup = dialog.querySelector("[data-arrival-group]");
 const states = dialog.querySelector("[data-states]");
 const rows = [...dialog.querySelectorAll(".state-row")];
 const daysForm = dialog.querySelector("[data-days]");
@@ -217,6 +225,8 @@ function resetArrival() {
   resetCancelArm();
   arrivalActions.hidden = false;
   arrivalConfirmation.hidden = true;
+  arrivalGroup.hidden = true;
+  arrivalGroup.textContent = "";
   arrivalError.hidden = true;
   arrivalError.textContent = "";
 }
@@ -228,18 +238,34 @@ function startArrival(reservation) {
 
 function fillArrival(reservation, room) {
   const days = reservation.days;
+  const total = reservationRoomTotal(reservation);
 
   arrivalHost.textContent = reservation.hostName;
   arrivalMeta.textContent = reservationMeta(reservation);
 
   factHost.textContent = reservation.hostName;
   factRoom.textContent = room.name;
-  factType.textContent = typeLabel(reservation.roomType);
+  factRooms.textContent = roomCountsLabel(reservationRoomCounts(reservation));
   factArrival.textContent = formatDate(reservation.arrivalDate);
   factCheckout.textContent = formatDate(
     checkoutDate(reservation.arrivalDate, days),
   );
   factDays.textContent = `${days} ${days === 1 ? "day" : "days"}`;
+
+  if (total > 1) {
+    const state = getState();
+    const names = arrivingRoomIds(state, reservation.id)
+      .map((id) => (state.rooms ?? []).find((candidate) => candidate.id === id)?.name)
+      .filter(Boolean);
+
+    arrivalGroup.textContent = names.length
+      ? `Checking in occupies all ${total} rooms: ${names.join(", ")}.`
+      : `Checking in occupies all ${total} rooms in this reservation.`;
+    arrivalGroup.hidden = false;
+  } else {
+    arrivalGroup.hidden = true;
+    arrivalGroup.textContent = "";
+  }
 }
 
 function showArrivalError(message) {
@@ -453,17 +479,24 @@ confirmCheckin.addEventListener("click", () => {
     return;
   }
 
-  const heldRoomId = [...arrivingAssignment(before)].find(
-    ([, held]) => held.id === id,
-  )?.[0];
-  if (heldRoomId === undefined) {
-    showArrivalError(`No free ${typeLabel(reservation.roomType)} room right now.`);
+  const heldRoomIds = arrivingRoomIds(before, id);
+  const needed = reservationRoomTotal(reservation);
+  if (heldRoomIds.length < needed) {
+    showArrivalError(
+      needed === 1
+        ? "No free room for this reservation right now."
+        : `This reservation needs ${needed} rooms; only ${heldRoomIds.length} are free right now.`,
+    );
     return;
   }
 
-  const conflict = occupancyConflict(before, heldRoomId, reservation.days, new Date(), {
-    exceptId: id,
-  });
+  const conflict = occupancyConflictForRooms(
+    before,
+    heldRoomIds,
+    reservation.days,
+    new Date(),
+    { exceptId: id },
+  );
   if (conflict) {
     showArrivalError(
       `That stay overlaps ${conflict.hostName}'s arrival on ` +
@@ -474,7 +507,7 @@ confirmCheckin.addEventListener("click", () => {
 
   const after = checkInReservation(before, id);
   if (after === before) {
-    showArrivalError(`No free ${typeLabel(reservation.roomType)} room right now.`);
+    showArrivalError("Those rooms are not free right now.");
     return;
   }
 
