@@ -755,6 +755,21 @@ Newest entries at the bottom.
             The extra margin is on the sections, not the stack gap, so cards
             and headings inside each half keep their tighter rhythm.
 
+2026-11-12  The checks are now part of the repository. tests/domain.test.mjs
+            holds 57 node:test cases covering dates, room counts and labels,
+            reservation validation, add/edit/cancel, availability, request
+            fitting, arrival assignment, atomic group check-in, no-show
+            reconciliation, room timers, and every schema migration from v1
+            to v4. tests/flows.mjs keeps the 63 browser flow checks as an
+            optional dev tool; it resolves Playwright locally, from
+            PLAYWRIGHT_PATH, or from the global @playwright/cli bundle, and
+            skips cleanly when none is available. A dependency-free
+            package.json gives `npm test` and `npm run test:browser`, and
+            marks the source as ES modules for older Node releases. why: the
+            checks existed only in /tmp, so a clean clone could not prove
+            anything. The app still runs without Node or any package; the
+            manifest is dev-time only.
+
 ================================================================
 4. TODO TASKS
 ================================================================
@@ -797,9 +812,9 @@ Target grade: 9 / 10
   non-obvious calls. That is rare and it is worth real marks.
 
 6.2 What keeps the grade at 7
-- The checks live outside the repository. The 89 domain and browser checks
-  under /tmp/opencode/multi prove the current build but vanish with the
-  machine, so no future change is protected by them.
+- The test suite is young. It proves the domain and the main flows, but the
+  storage failure paths (item 3) and the accessibility checklist (item 6)
+  are still unverified.
 - There is no README. A new reader cannot find the run command, the data
   model, the schema version, or the test commands from the repository.
 - Saved data can fail silently. A corrupt localStorage payload becomes an
@@ -825,15 +840,16 @@ Target grade: 9 / 10
 Highest lift first. Each item must leave proof in the repository, not only
 in a terminal transcript.
 
-1. Commit the test suite
-   - Move the pure-domain checks into tests/domain.test.mjs and run them
-     with the built-in runner: `node --test tests/`.
-   - Cover rooms timers, capacity, group check-in, filter fitting,
-     reservation edit/cancel, and every schema migration (v1 → v4).
-   - Keep the browser checks in tests/flows.mjs as an optional dev tool;
-     Playwright stays dev-only and the app still runs without it.
-   - Acceptance: `git clone` + `node --test tests/` passes with no
-     /tmp dependency. Grade lift: the project stops relying on memory.
+1. Commit the test suite — done 2026-11-12
+   - tests/domain.test.mjs runs under the built-in runner: `npm test` or
+     `node --test`. It covers rooms timers, capacity, group check-in,
+     filter fitting, reservation edit/cancel, and schema migrations v1 → v4.
+   - tests/flows.mjs holds the browser checks as an optional dev tool;
+     Playwright stays dev-only and the app runs without it.
+   - package.json carries no dependencies; it only declares ES modules and
+     the two commands.
+   - Result: 57 domain checks pass on a clean clone, plus 63 browser checks
+     when Playwright is available.
 
 2. Add a README and keep this roadmap current
    - State what the app is, how to serve it (`python3 -m http.server`),

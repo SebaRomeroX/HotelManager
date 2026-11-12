@@ -1,0 +1,9 @@
+{
+  "name": "hotel-manager",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "test:browser": "node tests/flows.mjs"
+  }
+}
