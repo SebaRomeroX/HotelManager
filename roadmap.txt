@@ -747,6 +747,13 @@ Newest entries at the bottom.
             either shape. Check-in refuses when even one requested room is not
             free, and the days hint says so before the desk tries.
 
+2026-11-12  The planning half now starts a full space further below the room
+            grid, and the Incoming/Register actions sit a full space below the
+            Find a stay button. Both gaps were the stack's default 16px, which
+            made the rooms and the reservations read as one run of controls.
+            The extra margin is on the sections, not the stack gap, so cards
+            and headings inside each half keep their tighter rhythm.
+
 ================================================================
 4. TODO TASKS
 ================================================================

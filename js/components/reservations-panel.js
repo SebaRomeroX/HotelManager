@@ -8,7 +8,7 @@ import { renderCalendar } from "./calendar.js";
 // that hold every pending booking and all history.
 export function renderReservationsPanel() {
   const section = document.createElement("section");
-  section.className = "stack";
+  section.className = "stack reservations-panel";
   section.setAttribute("aria-labelledby", "reservations-title");
 
   const heading = document.createElement("h3");
