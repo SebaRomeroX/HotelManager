@@ -107,7 +107,61 @@ export function renderCalendar() {
 
   const grid = document.createElement("div");
   grid.className = "cal-grid";
+  grid.setAttribute("role", "group");
+  grid.setAttribute("aria-label", "Availability calendar");
   grid.append(...gridCells(view, today));
+  grid.addEventListener("keydown", (event) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+
+    const current = event.target.closest?.(".cal-cell[data-date]");
+    if (!current) return;
+
+    const day = Number(current.dataset.date.slice(-2));
+    const daysInMonth = new Date(view.year, view.month + 1, 0).getDate();
+    let nextDay = day;
+
+    switch (event.key) {
+      case "ArrowLeft":
+        nextDay -= 1;
+        break;
+      case "ArrowRight":
+        nextDay += 1;
+        break;
+      case "ArrowUp":
+        nextDay -= 7;
+        break;
+      case "ArrowDown":
+        nextDay += 7;
+        break;
+      case "Home":
+        nextDay = 1;
+        break;
+      case "End":
+        nextDay = daysInMonth;
+        break;
+      default:
+        return;
+    }
+
+    nextDay = Math.min(Math.max(nextDay, 1), daysInMonth);
+    if (nextDay === day) return;
+    event.preventDefault();
+
+    const target = grid.querySelector(
+      `.cal-cell[data-date="${isoOf(view.year, view.month, nextDay)}"]`,
+    );
+    if (!target) return;
+    target.focus();
+  });
+  // Whichever day receives focus becomes the grid's tab stop, including when
+  // a sheet hands focus back to the cell that opened it.
+  grid.addEventListener("focusin", (event) => {
+    const cell = event.target.closest?.(".cal-cell[data-date]");
+    if (!cell) return;
+    for (const other of grid.querySelectorAll(".cal-cell[data-date]")) {
+      other.tabIndex = other === cell ? 0 : -1;
+    }
+  });
 
   const filterGroup = document.createElement("div");
   filterGroup.className = "cal-filter-group";
@@ -242,7 +296,20 @@ function gridCells(view, today) {
     cells.push(blank());
   }
 
+  applyTabStop(cells, today);
   return cells;
+}
+
+// One day at a time is in the tab order. Arrow keys move between the others
+// (see renderCalendar), so a keyboard user does not tab through 42 buttons to
+// reach the filter. Today is the natural entry point when it is on screen.
+function applyTabStop(cells, today) {
+  const days = cells.filter((cell) => cell.dataset.date);
+  const preferred =
+    days.find((cell) => cell.dataset.date === today) ?? days[0];
+  for (const cell of days) {
+    cell.tabIndex = cell === preferred ? 0 : -1;
+  }
 }
 
 function dayCell(view, day, today) {
@@ -257,7 +324,10 @@ function dayCell(view, day, today) {
   cell.className = "cal-cell";
   cell.dataset.date = iso;
   const isToday = iso === today;
-  if (isToday) cell.classList.add("cal-cell--today");
+  if (isToday) {
+    cell.classList.add("cal-cell--today");
+    cell.setAttribute("aria-current", "date");
+  }
   if (iso < today) cell.classList.add("cal-cell--past");
 
   if (active) {

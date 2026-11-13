@@ -21,6 +21,7 @@ import {
   roomCountsLabel,
   updateReservation,
 } from "../reservations.js";
+import { announce } from "./announcer.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -521,6 +522,7 @@ form.addEventListener("submit", (event) => {
     // already known to be valid. The store repaint then draws the normal view.
     beforeSave?.();
     update(() => after);
+    announce(`Reservation saved for ${values.hostName}.`);
   } else {
     const id = editingId;
     const before = getState();
@@ -530,6 +532,7 @@ form.addEventListener("submit", (event) => {
       return;
     }
     update(() => after);
+    announce(`Reservation updated for ${values.hostName}.`);
   }
 
   dialog.close();
@@ -642,6 +645,7 @@ checkinButton.addEventListener("click", () => {
 
   beforeSave?.();
   update(() => after);
+  announce(`Checked in ${reservation.hostName}.`);
   dialog.close();
 });
 
@@ -657,7 +661,9 @@ cancelResButton.addEventListener("click", () => {
   }
 
   const id = editingId;
+  const reservation = findEditing();
   update((state) => removeReservation(state, id));
+  announce(`Reservation for ${reservation?.hostName ?? "the guest"} cancelled.`);
   dialog.close();
 });
 
@@ -680,16 +686,23 @@ dialog.addEventListener("close", () => {
 
   // Saving repaints the list, so both the opener and the rows are new
   // elements by now and the browser's own restoration finds nothing. After a
-  // cancel the row is gone entirely — fall back to the sheet that opened this
-  // one, then to the day it was booked for, then to today's cell (none of
-  // these exist when browsing another month). Rows can also live inside a
-  // closed sheet, so only a laid-out row is a valid focus target.
+  // cancel the row is gone entirely — fall back to the rows or Close in the
+  // sheet still open underneath, then to the sheet opener, then to the day it
+  // was booked for, then to today's cell (none of these exist when browsing
+  // another month). Rows can also live inside a closed sheet, so only a
+  // laid-out row is a valid focus target.
   const rowCandidate =
     returnTo && document.querySelector(`.res-row[data-id="${returnTo}"]`);
   const row = rowCandidate?.getClientRects().length ? rowCandidate : null;
+  const openDialog = document.querySelector("dialog[open]");
+  const sheetFallback =
+    openDialog?.querySelector(".res-row") ??
+    openDialog?.querySelector("[data-close]") ??
+    null;
   const returnTarget = selector ? document.querySelector(selector) : null;
   const target =
     row ??
+    sheetFallback ??
     returnTarget ??
     document.querySelector(`.cal-cell[data-date="${date}"]`) ??
     document.querySelector(".cal-cell--today");

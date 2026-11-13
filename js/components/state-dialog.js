@@ -24,6 +24,7 @@ import {
   reservationRoomTotal,
   roomCountsLabel,
 } from "../reservations.js";
+import { announce } from "./announcer.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -454,6 +455,7 @@ arrivalCheckin.addEventListener("click", () => {
   arrivalError.hidden = true;
   arrivalError.textContent = "";
   confirmCheckin.focus();
+  announce(`Confirm check-in for ${arrivalHost.textContent}.`);
 });
 
 arrivalBack.addEventListener("click", () => {
@@ -512,6 +514,7 @@ confirmCheckin.addEventListener("click", () => {
   }
 
   update(() => after);
+  announce(`Checked in ${reservation.hostName}.`);
   dialog.close();
   focusCard(roomId);
 });
@@ -529,7 +532,9 @@ arrivalCancel.addEventListener("click", () => {
     return;
   }
 
+  const host = arrivalHost.textContent;
   update((state) => removeReservation(state, id));
+  announce(`Reservation for ${host} cancelled.`);
   dialog.close();
   focusCard(roomId);
 });

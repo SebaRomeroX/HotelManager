@@ -50,10 +50,9 @@ function render() {
   list.replaceChildren(
     ...pending.map((reservation) =>
       reservationRow(reservation, (booking) => {
-        // The booking sheet sits above this one, and the list behind it would
-        // be stale after a save. Close first, then hand focus back to the
-        // Incoming button when the booking sheet closes.
-        dialog.close();
+        // The booking sheet stacks above this one. Keeping the list open lets
+        // the row survive the save, so closing the sheet can return focus to
+        // the exact row that opened it instead of the button behind it.
         openReservationDialog(booking.id, {
           focusSelector: "[data-incoming]",
         });

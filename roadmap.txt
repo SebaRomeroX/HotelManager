@@ -823,6 +823,40 @@ Newest entries at the bottom.
             why: deleting a room removes supply that a sold booking relied
             on, and unlike editing it cannot be repaired by editing again.
 
+2026-11-13  The calendar is now one labelled group with a roving tab stop, so
+            a keyboard user pages months, picks a day and books without
+            tabbing through 42 cells. Arrow keys move by day or week, Home
+            and End reach the month ends, and the day that receives focus
+            becomes the group's tab stop—including when a sheet hands focus
+            back after a save. Today carries aria-current="date". A shared
+            announcer.js holds one polite status region for saves, edits,
+            cancels, check-ins, the check-in confirmation and room changes;
+            refusals keep their own role="alert" because an error should not
+            wait behind other speech.
+
+2026-11-13  Focus return is now exact rather than approximate. Incoming stays
+            open under the edit sheet so the row survives the repaint and
+            focus can go back to that row; after a cancel the row is gone,
+            so focus moves to the next row or to Close inside Incoming. A
+            booking returns to its day cell and a room sheet to its card.
+            The day cell also adopts the tab stop on focusin, so clicking a
+            day by pointer leaves the keyboard in the same place.
+
+2026-11-13  The accessibility pass found two layout failures at 200% text.
+            The form's auto grid track grew to the date input's intrinsic
+            width (518px inside a 288px sheet), and the dialog header let a
+            long title and Close squeeze each other into broken words. Stack
+            and form tracks are now minmax(0, 1fr), inputs may shrink, long
+            titles wrap, the header drops Close to its own line, and paired
+            actions use a rem-sized auto-fit grid so they stack when the text
+            grows. --danger and --state-oos moved from #e5534b to #e8665e so
+            they clear AA on surface-raised (5.07:1); tests/contrast.test.mjs
+            parses the shipped tokens and fails the build if a pair drops
+            below 4.5:1. ACCESSIBILITY.md records the Chromium version, the
+            full checklist and how to repeat it. why: "accessible" is a
+            claim, and the repository now carries the evidence and a guard
+            against regressing it.
+
 ================================================================
 4. TODO TASKS
 ================================================================
@@ -866,15 +900,14 @@ Target grade: 9 / 10
 
 6.2 What keeps the grade at 8
 - The test suite is young. It proves the domain, the main flows, storage
-  recovery and backup validation, but the accessibility checklist (item 6)
-  and the wider responsive range (item 7) are still unverified.
+  recovery, backup validation and the accessibility checklist, but the
+  wider responsive range (item 7) is still unverified.
 - Backup is manual. Export/restore is a file the user must remember to make;
   there is no scheduled backup or sync. That is the honest scope for a
   browser-only app, but one browser profile is still a single copy.
-- Accessibility is good in places but unverified as a whole: focus return
-  and aria labels exist, yet keyboard paging through the 42-cell grid,
-  live-region announcements, contrast and 200% zoom have no pass/fail
-  checklist.
+- Accessibility is now verified in one browser at 360px: keyboard paging,
+  focus return, live regions, contrast and 200% text have a pass/fail
+  checklist. It is not a cross-browser or screen-reader audit.
 - Several modules are now large (reservations.js ~1000 lines, the
   reservation and state dialogs ~700 and ~640). The responsibilities are
   still coherent, but navigation costs are rising.
@@ -958,14 +991,31 @@ in a terminal transcript.
    - Acceptance met: a capacity guard test proves the refusal and its
      wording.
 
-6. Run an accessibility pass and record the checklist
-   - Keyboard-only: page months, open a day, book, edit, cancel and return
-     focus to the exact opener.
-   - `aria-live` for filter status, save/refusal messages and check-in
-     confirmation.
-   - Contrast and 200% zoom at 360px; no horizontal scroll.
-   - Acceptance: a short ACCESSIBILITY.md checklist with the browser and
-     result, repeated after any focus/DOM change.
+6. Run an accessibility pass and record the checklist — done 2026-11-13
+   - The month grid is a labelled roving-tabindex group: one day is in the
+     tab order, Arrow keys move by day or week, Home/End reach the month
+     ends, and today carries aria-current="date". Paging or opening a sheet
+     leaves the grid with a single, correct tab stop.
+   - One polite status region in js/components/announcer.js announces saved
+     bookings, edits, cancels, check-ins, the check-in confirmation and room
+     add/edit/delete. Refusals keep their own role="alert", and the stay
+     filter's result is a polite live region.
+   - Focus return is exact. A saved booking returns to its day cell, an edit
+     to its Incoming row, a cancel to the next row (or Close inside Incoming
+     when the list empties), and a room sheet to its card. Incoming now stays
+     open under the edit sheet so the row survives the repaint.
+   - The danger token moved from #e5534b to #e8665e so danger and disabled
+     text reach AA on surface-raised. tests/contrast.test.mjs parses
+     css/tokens.css and enforces 4.5:1 for every shipped pair.
+   - At 200% text the stack and form tracks are minmax(0, 1fr), long titles
+     wrap, the dialog header drops Close to its own line, and paired actions
+     stack. No page or open sheet has horizontal overflow.
+   - ACCESSIBILITY.md records the browser, the pass/fail checklist, the
+     contrast table and how to repeat the run. tests/flows.mjs performs the
+     keyboard, focus, ARIA and 200% checks.
+   - Result: 76 domain/store/contrast checks and 133 browser checks pass.
+   - Acceptance met: a short checklist with the browser and result exists and
+     can be repeated after any focus or DOM change.
 
 7. Verify the responsive range, not one width
    - Add screenshot checks at 320, 360, 390, 768 and landscape.

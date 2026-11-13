@@ -70,6 +70,25 @@ npm run test:browser
 installed `@playwright/cli` bundle. If none is available it prints a skip
 message and exits successfully; the app never depends on Playwright.
 
+The flow suite includes a keyboard-only booking/edit/cancel pass, focus-return
+checks, ARIA role checks and a 200% text check; `npm test` also enforces the
+colour-contrast pairs. See [`ACCESSIBILITY.md`](ACCESSIBILITY.md) for the
+checklist, the browser used and the result.
+
+## Accessibility
+
+- The calendar is a labelled group with a roving tab stop: Arrow keys move by
+  day or week and Home/End reach the month ends, so a keyboard user does not
+  tab through 42 cells.
+- Every dialog is a native `<dialog>`, so focus stays inside while it is open.
+  Closing a sheet returns focus to the day, row or room card that opened it.
+- Saves, edits, cancels, check-ins and room changes are announced through one
+  polite live region; refusals use `role="alert"` at the point of failure.
+- The dark palette meets WCAG AA contrast on every surface; `npm test`
+  recomputes the ratios from `css/tokens.css`.
+- At 200% text size at 360px the page and every sheet stay free of horizontal
+  scroll.
+
 ## Data
 
 One key holds everything:
@@ -178,6 +197,7 @@ js/app.js                bootstrap and repaint wiring
 js/store.js              state container, persistence, migrations and status
 js/components/storage-banner.js  storage recovery and saving banner
 js/components/data-dialog.js     export, restore and confirmation
+js/components/announcer.js       one polite live region for outcomes
 js/download.js           dated file download helper
 js/rooms.js              room types, states and timers
 js/reservations.js       availability, bookings, check-in and history
@@ -186,7 +206,9 @@ js/views/front-desk.js   the single screen
 js/components/           render helpers and dialogs
 tests/domain.test.mjs    dependency-free domain checks
 tests/store.test.mjs     storage failure, export and restore checks
+tests/contrast.test.mjs  WCAG AA checks over the shipped palette
 tests/flows.mjs          optional Playwright flow checks
+ACCESSIBILITY.md         keyboard, ARIA, contrast and zoom checklist
 package.json             dev commands; no dependencies
 roadmap.txt              rules, spec, decisions, dev log and open work
 ```
@@ -197,7 +219,9 @@ roadmap.txt              rules, spec, decisions, dev log and open work
   backup. Export/restore moves data by hand through a JSON file; clearing
   site data without an export still deletes the property.
 - Register history has no pruning or filtering.
-- No accessibility checklist or systematic responsive matrix is recorded yet.
+- Accessibility is checked in Chromium at 360px only; it has not been tested
+  with a screen reader or a second browser. The responsive range beyond 360px
+  is not recorded yet.
 - No payments, invoices, email, OTA integration or multi-property support.
 
 These and the remaining work are tracked in `roadmap.txt`.

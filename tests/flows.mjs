@@ -150,6 +150,45 @@ async function chooseFile(file) {
   await chooser.setFiles(file);
 }
 
+// A snapshot of the focused control, enough to drive a keyboard-only check
+// without evaluating script in the page for every step.
+async function focused() {
+  return page.evaluate(() => {
+    const el = document.activeElement;
+    if (!el) return {};
+    return {
+      id: el.id ?? "",
+      date: el.dataset?.date ?? null,
+      nav: el.dataset?.nav ?? null,
+      roomId: el.dataset?.id ?? null,
+      roomCount: el.dataset?.roomCount ?? null,
+      incoming: el.dataset?.incoming !== undefined,
+      register: el.dataset?.register !== undefined,
+      data: el.dataset?.data !== undefined,
+      book: el.dataset?.book !== undefined,
+      cancelRes: el.hasAttribute?.("data-cancel-res") ?? false,
+      close: el.hasAttribute?.("data-close") ?? false,
+      row: el.classList?.contains("res-row") ?? false,
+      card: el.classList?.contains("card") ?? false,
+      dialogTitle:
+        el.closest?.("dialog[open]")?.querySelector(".dialog__title")
+          ?.textContent ?? null,
+      submit: el.type === "submit",
+    };
+  });
+}
+
+// Keyboard-only navigation: press Tab (or Shift+Tab) until the focused control
+// matches. The date input can keep focus on an internal segment for a step or
+// two, so a fixed tab count would be brittle.
+async function tabTo(match, { direction = "Tab", max = 14 } = {}) {
+  for (let i = 0; i < max; i += 1) {
+    if (match(await focused())) return true;
+    await page.keyboard.press(direction);
+  }
+  return match(await focused());
+}
+
 try {
   // ---------- A. filter -> prefilled reservation -> save ----------
   await page.goto(APP_URL);
@@ -335,9 +374,21 @@ try {
     ),
   );
   await page.click("[data-arrival-checkin]");
+  check(
+    "check-in confirmation is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "Confirm check-in for Arriving Group",
+    ),
+  );
   await page.click("[data-confirm-checkin]");
   await page.waitForTimeout(200);
   state = await stored();
+  check(
+    "completed check-in is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "Checked in Arriving Group",
+    ),
+  );
   check("check-in clears the reservation", state.reservations.length === 0);
   check(
     "check-in occupies all three rooms",
@@ -494,6 +545,15 @@ try {
   );
   check("edit stores the new duration", state.reservations[0].days === 3);
   check("edit keeps the host name", state.reservations[0].hostName === "Editable");
+  check(
+    "saving an edit returns focus to the same row",
+    await page.evaluate(
+      () =>
+        document.activeElement?.classList.contains("res-row") &&
+        document.activeElement?.dataset.id === "r1",
+    ),
+  );
+  await closeDialog();
 
   // ---------- G. cancel the whole group ----------
   await page.click("[data-incoming]");
@@ -1003,6 +1063,272 @@ try {
     (await stored()).register.length === 0,
   );
   await closeDialog();
+
+  // ---------- O. keyboard-only booking, edit, cancel and focus return ----------
+  await seed({
+    version: 4,
+    rooms: [
+      { id: "s1", name: "Small 1", type: "small", state: "vacant" },
+      { id: "s2", name: "Small 2", type: "small", state: "vacant" },
+    ],
+    reservations: [],
+    register: [],
+  });
+
+  check(
+    "the calendar is one labelled group",
+    (await page.locator(".cal-grid").getAttribute("role")) === "group" &&
+      (await page.locator(".cal-grid").getAttribute("aria-label")) ===
+        "Availability calendar",
+  );
+  check(
+    "today is marked as the current date",
+    (await page.locator('.cal-cell[aria-current="date"]').count()) === 1,
+  );
+  check(
+    "the grid exposes one tab stop",
+    (await page.locator('.cal-cell[tabindex="0"]').count()) === 1,
+  );
+  check(
+    "the announcer is a polite live region",
+    (await page.locator("[data-announcer]").getAttribute("role")) === "status" &&
+      (await page.locator("[data-announcer]").getAttribute("aria-live")) ===
+        "polite",
+  );
+  check(
+    "the filter status is a live region",
+    (await page
+      .locator(".cal-filter__status")
+      .getAttribute("aria-live")) === "polite",
+  );
+  check(
+    "refusals use an alert",
+    (await page.locator("#reservation-error").getAttribute("role")) === "alert",
+  );
+
+  const monthBefore = await page.locator(".cal-nav__label").textContent();
+  check(
+    "next month is reachable with Tab",
+    await tabTo((focus) => focus.nav === "next", { max: 5 }),
+  );
+  await page.keyboard.press("Enter");
+  check(
+    "Enter pages the calendar and keeps focus on the button",
+    (await page.locator(".cal-nav__label").textContent()) !== monthBefore &&
+      (await focused()).nav === "next",
+  );
+
+  await page.keyboard.press("Tab");
+  const gridEntry = await focused();
+  check("Tab enters the grid on one day", gridEntry.date !== null);
+
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowDown");
+  const keyboardDate = (await focused()).date;
+  check(
+    "arrow keys move between days",
+    keyboardDate !== null && keyboardDate !== gridEntry.date,
+    keyboardDate,
+  );
+
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("dialog[open] [data-book]");
+  const chosenLabel = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(`${keyboardDate}T12:00:00`));
+  check(
+    "Enter opens the day sheet for the focused date",
+    (await page.locator("dialog[open] [data-title]").textContent()).includes(
+      chosenLabel,
+    ),
+    chosenLabel,
+  );
+  check(
+    "the day sheet opens with New reservation reachable",
+    await tabTo((focus) => focus.book, { max: 4 }),
+  );
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("dialog[open] #reservation-name");
+  check(
+    "the booking sheet takes first focus on the host field",
+    (await focused()).id === "reservation-name",
+  );
+
+  await page.keyboard.type("Keyboard Guest");
+  await page.keyboard.press("Shift+Tab");
+  check(
+    "the duration takes keyboard input",
+    (await focused()).id === "reservation-days",
+  );
+  await page.keyboard.type("1");
+  check(
+    "the room count is reachable backwards",
+    await tabTo((focus) => focus.roomCount === "small", {
+      direction: "Shift+Tab",
+      max: 12,
+    }),
+  );
+  await page.keyboard.type("1");
+  check(
+    "the host field is reachable forwards",
+    await tabTo((focus) => focus.id === "reservation-name", { max: 12 }),
+  );
+  await page.keyboard.press("Tab");
+  check("the enabled save button takes focus", (await focused()).submit);
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(250);
+
+  const keyboardState = await stored();
+  check(
+    "a keyboard-only booking is saved",
+    keyboardState.reservations.length === 1 &&
+      keyboardState.reservations[0].hostName === "Keyboard Guest",
+  );
+  check(
+    "saving returns focus to the exact day cell",
+    (await focused()).date === keyboardDate,
+    `${(await focused()).date} vs ${keyboardDate}`,
+  );
+  check(
+    "the save is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "Reservation saved for Keyboard Guest",
+    ),
+  );
+
+  check(
+    "Incoming is reachable from the day cell",
+    await tabTo((focus) => focus.incoming, { max: 4 }),
+  );
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("dialog[open] .res-row");
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("dialog[open] #reservation-days");
+  check(
+    "a row opens the edit sheet",
+    (await page.locator("dialog[open] [data-title]").textContent()) ===
+      "Edit reservation",
+  );
+
+  check(
+    "the duration is reachable in edit mode",
+    await tabTo((focus) => focus.id === "reservation-days", { max: 12 }),
+  );
+  await page.keyboard.press("Control+A");
+  await page.keyboard.type("2");
+  await tabTo((focus) => focus.submit, { max: 4 });
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(250);
+  check(
+    "a keyboard-only edit is saved",
+    (await stored()).reservations[0]?.days === 2,
+  );
+  check(
+    "editing returns focus to the same row",
+    (await focused()).row,
+  );
+  check(
+    "the edit is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "Reservation updated for Keyboard Guest",
+    ),
+  );
+
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("dialog[open] [data-cancel-res]");
+  check(
+    "the cancel control is reachable by keyboard",
+    await tabTo((focus) => focus.cancelRes, { max: 10 }),
+  );
+  await page.keyboard.press("Enter");
+  check(
+    "cancel arms before removing the booking",
+    (await page.locator("dialog[open] [data-cancel-res]").textContent()) ===
+      "Confirm cancel",
+  );
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(250);
+  check(
+    "a keyboard-only cancel removes the booking",
+    (await stored()).reservations.length === 0 &&
+      (await stored()).register.length === 1,
+  );
+  check(
+    "cancelling falls back inside the open Incoming sheet",
+    (await focused()).close && (await focused()).dialogTitle === "Incoming",
+  );
+  check(
+    "the cancel is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "Reservation for Keyboard Guest cancelled",
+    ),
+  );
+
+  // ---------- P. room card focus and 200% text ----------
+  await seed({
+    version: 4,
+    rooms: [
+      { id: "d1", name: "Dirty 1", type: "small", state: "dirty" },
+      { id: "s1", name: "Small 1", type: "small", state: "vacant" },
+    ],
+    reservations: [],
+    register: [],
+  });
+  check(
+    "a room card is reachable by keyboard",
+    await tabTo((focus) => focus.card, { max: 5 }),
+  );
+  const cardId = (await focused()).roomId;
+  await page.keyboard.press("Enter");
+  await page.waitForSelector("dialog[open] .state-list");
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+  check(
+    "closing a room sheet returns focus to its card",
+    (await focused()).roomId === cardId,
+  );
+
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = "200%";
+  });
+  await page.waitForTimeout(200);
+  check(
+    "200% text keeps the view free of horizontal scroll",
+    await page.evaluate(() => {
+      const view = document.querySelector(".view");
+      return (
+        document.documentElement.scrollWidth <= window.innerWidth &&
+        view.scrollWidth <= view.clientWidth + 1
+      );
+    }),
+  );
+
+  // The form sheets are the tightest layout: three room counts, a date field
+  // and a paired action row. Check the reservation sheet at the same size.
+  await page.locator(".cal-cell[data-date]:not(.cal-cell--past)").first().click();
+  await page.waitForSelector("dialog[open] [data-book]");
+  await page.click("dialog[open] [data-book]");
+  await page.waitForSelector("dialog[open] #reservation-name");
+  check(
+    "200% text keeps the reservation sheet free of horizontal scroll",
+    await page.evaluate(() => {
+      const open = document.querySelector("dialog[open]");
+      const header = open.querySelector(".dialog__header");
+      const body = open.querySelector(".dialog__body");
+      return (
+        document.documentElement.scrollWidth <= window.innerWidth &&
+        header.scrollWidth <= header.clientWidth + 1 &&
+        body.scrollWidth <= body.clientWidth + 1
+      );
+    }),
+  );
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+
+  await page.evaluate(() => {
+    document.documentElement.style.fontSize = "";
+  });
 } finally {
   await browser.close();
   server.kill();

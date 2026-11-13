@@ -11,6 +11,7 @@ import {
   updateRoom,
 } from "../rooms.js";
 import { formatDate, roomRemovalConflict } from "../reservations.js";
+import { announce } from "./announcer.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -228,8 +229,10 @@ form.addEventListener("submit", (event) => {
 
   if (editingId === null) {
     update((state) => addRoom(state, values));
+    announce(`${values.name} added.`);
   } else {
     update((state) => updateRoom(state, editingId, values));
+    announce(`${values.name} saved.`);
     editingId = null;
   }
 
@@ -279,6 +282,7 @@ deleteButton.addEventListener("click", () => {
 
   const id = editingId;
   update((state) => removeRoom(state, id));
+  announce(`${room.name} deleted.`);
   editingId = null;
   resetForm();
 });

@@ -9,13 +9,13 @@
   --text: #e8e8ea;
   --text-muted: #8a8a92;
   --accent: #4f9cf9;
-  --danger: #e5534b;
+  --danger: #e8665e;
 
   --state-vacant: #4ade80;
   --state-occupied: #c084fc;
   --state-dirty: #fbbf24;
   --state-cleaning: #38bdf8;
-  --state-oos: #e5534b;
+  --state-oos: #e8665e;
 
   --space-1: 4px;
   --space-2: 8px;
