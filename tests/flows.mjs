@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -139,6 +140,14 @@ async function closeDialog() {
   const open = page.locator("dialog[open]");
   if (await open.count()) await open.locator("[data-close]").first().click();
   await page.waitForTimeout(100);
+}
+
+async function chooseFile(file) {
+  const [chooser] = await Promise.all([
+    page.waitForEvent("filechooser"),
+    page.click("dialog[open] [data-choose]"),
+  ]);
+  await chooser.setFiles(file);
 }
 
 try {
@@ -616,6 +625,17 @@ try {
     download.suggestedFilename(),
   );
 
+  await page.click("[data-data]");
+  await page.waitForSelector("dialog[open] [data-export]");
+  await page.click("dialog[open] [data-export]");
+  check(
+    "export is blocked while the saved copy is unreadable",
+    (
+      await page.locator("dialog[open] [data-error]").textContent()
+    ).includes("unreadable"),
+  );
+  await closeDialog();
+
   await page.click("[data-start-empty]");
   check(
     "start empty arms before discarding",
@@ -706,6 +726,164 @@ try {
     ).rooms.length === 1,
   );
   await quotaPage.close();
+
+  // ---------- L. export and restore ----------
+  const backupState = {
+    version: 4,
+    rooms: [
+      { id: "b1", name: "Backup Room", type: "large", state: "dirty" },
+      { id: "b2", name: "Backup Suite", type: "suite", state: "vacant" },
+    ],
+    reservations: [
+      {
+        id: "backup-res",
+        hostName: "Restored Guest",
+        roomCounts: { small: 0, large: 1, suite: 0 },
+        arrivalDate: iso(2),
+        days: 2,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    register: [
+      {
+        id: "backup-history",
+        hostName: "Past Guest",
+        roomCounts: { small: 0, large: 0, suite: 1 },
+        arrivalDate: iso(-3),
+        days: 1,
+        status: "cancelled",
+        registeredAt: new Date().toISOString(),
+        assignedRooms: [],
+      },
+    ],
+  };
+  await seed(backupState);
+  await page.click("[data-data]");
+  await page.waitForSelector("dialog[open] [data-export]");
+  check(
+    "the data sheet opens",
+    (await page.locator("dialog[open] .dialog__title").textContent()) ===
+      "Saved data",
+  );
+
+  const [dataDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    page.click("dialog[open] [data-export]"),
+  ]);
+  const exportedText = await readFile(await dataDownload.path(), "utf8");
+  const exported = JSON.parse(exportedText);
+  check(
+    "export contains the full state",
+    exported.rooms.length === 2 &&
+      exported.reservations[0]?.hostName === "Restored Guest" &&
+      exported.register[0]?.hostName === "Past Guest",
+  );
+  check(
+    "export names a dated JSON file",
+    /^hotelmanager-data-\d{4}-\d{2}-\d{2}\.json$/.test(
+      dataDownload.suggestedFilename(),
+    ),
+    dataDownload.suggestedFilename(),
+  );
+  await closeDialog();
+
+  // Simulate a fresh browser: no saved state at all.
+  await page.evaluate(() => localStorage.removeItem("hotelmanager:state"));
+  await page.reload();
+  await page.waitForSelector(".view__title");
+  check(
+    "the cleared desk has no rooms",
+    (await page.locator(".view").textContent()).includes("No rooms yet."),
+  );
+
+  const backupFile = {
+    name: "hotelmanager-backup.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(exportedText),
+  };
+
+  await page.click("[data-data]");
+  await page.waitForSelector("dialog[open] [data-choose]");
+  await chooseFile(backupFile);
+  await page.waitForSelector("dialog[open] [data-confirm]:not([hidden])");
+
+  check(
+    "restore asks before replacing anything",
+    (
+      await page.locator("dialog[open] [data-confirm-text]").textContent()
+    ).includes("2 rooms, 1 booking and 1 history entry") &&
+      (await page.evaluate(() => localStorage.getItem("hotelmanager:state"))) ===
+        null,
+  );
+
+  await page.click("dialog[open] [data-cancel]");
+  check(
+    "cancelling leaves the desk empty",
+    (await page.locator("dialog[open] [data-confirm]").isHidden()) &&
+      (await page.evaluate(() => localStorage.getItem("hotelmanager:state"))) ===
+        null,
+  );
+
+  await chooseFile(backupFile);
+  await page.waitForSelector("dialog[open] [data-confirm]:not([hidden])");
+  await page.click("dialog[open] [data-replace]");
+  await page.waitForTimeout(200);
+
+  check(
+    "restore reports what it loaded",
+    (await page.locator("dialog[open] [data-success]").textContent()).includes(
+      "2 rooms, 1 booking and 1 history entry",
+    ),
+  );
+
+  const restored = await stored();
+  check(
+    "restore writes every collection",
+    restored.rooms.length === 2 &&
+      restored.reservations[0].hostName === "Restored Guest" &&
+      restored.register[0].hostName === "Past Guest",
+  );
+
+  await closeDialog();
+  check(
+    "the restored desk renders its data",
+    (await page.locator(".view").textContent()).includes("Backup Room") &&
+      (await page.locator("[data-incoming]").textContent()) === "Incoming (1)" &&
+      (await page.locator("[data-register]").textContent()) === "Register (1)",
+  );
+
+  await page.click("[data-data]");
+  await page.waitForSelector("dialog[open] [data-choose]");
+  await chooseFile({
+    name: "future.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ ...exported, version: 5 })),
+  });
+  await page.waitForSelector("dialog[open] [data-error]:not([hidden])");
+  check(
+    "a newer schema version is refused",
+    (await page.locator("dialog[open] [data-error]").textContent()).includes(
+      "newer version",
+    ),
+  );
+  check(
+    "a refused file changes nothing",
+    (await stored()).reservations[0].hostName === "Restored Guest",
+  );
+
+  await chooseFile({
+    name: "broken.json",
+    mimeType: "application/json",
+    buffer: Buffer.from("{broken"),
+  });
+  await page.waitForSelector("dialog[open] [data-error]:not([hidden])");
+  check(
+    "invalid JSON is refused",
+    (await page.locator("dialog[open] [data-error]").textContent()).includes(
+      "not valid JSON",
+    ),
+  );
+  await closeDialog();
 } finally {
   await browser.close();
   server.kill();

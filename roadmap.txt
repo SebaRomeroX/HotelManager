@@ -1,7 +1,7 @@
 ================================================================
 HOTEL MANAGER — ROADMAP
 ================================================================
-Last updated: 2026-11-12
+Last updated: 2026-11-13
 Status: implementation phase — rooms, states, reservations and history working
 
 Structure of this file:
@@ -99,11 +99,12 @@ Nothing else is in scope until these three are working.
   css/tokens.css        palette, spacing, type scale — the theme swap point
   css/app.css           layout and components
   js/app.js             bootstrap and view switching
-  js/store.js           state container, persistence and storage status
+  js/store.js           state container, persistence, migrations and status
+  js/download.js        dated file download helper
   js/views/*.js         one module per screen
   js/components/*.js    small reusable render helpers
   tests/domain.test.mjs dependency-free domain checks (node:test)
-  tests/store.test.mjs  storage failure and recovery checks (node:test)
+  tests/store.test.mjs  storage, export and restore checks (node:test)
   tests/flows.mjs       optional Playwright browser flow checks
   package.json          dev commands only; no dependencies
   README.md             quick start, data model, tests and limitations
@@ -796,6 +797,19 @@ Newest entries at the bottom.
             lose data silently, and the old catch blocks made corruption
             look like an empty property.
 
+2026-11-13  Export and restore now live in a Data sheet opened from the
+            front desk header. Export writes the same state shape the app
+            persists, indented and dated, so it is readable and can be
+            handed back to the app. Restore validates the file, runs the
+            existing migrations, and refuses missing or future schema
+            versions, malformed collections and non-record entries. It
+            shows the file name and counts before anything is written, and
+            replaces only after Replace data is pressed. Restoring over an
+            unreadable payload clears that status, while a failed write
+            still shows the saving banner. why: a file is the only backup a
+            browser-only app can offer without a server, and a restore must
+            never be an accidental merge or overwrite.
+
 ================================================================
 4. TODO TASKS
 ================================================================
@@ -820,7 +834,7 @@ Newest entries at the bottom.
 6. GRADE REVIEW
 ================================================================
 
-Current grade: 8 / 10 (2026-11-12)
+Current grade: 8 / 10 (2026-11-13)
 Target grade: 9 / 10
 
 6.1 Why this is already better than a toy
@@ -838,12 +852,12 @@ Target grade: 9 / 10
   non-obvious calls. That is rare and it is worth real marks.
 
 6.2 What keeps the grade at 8
-- The test suite is young. It proves the domain, the main flows and the
-  storage failure paths, but the accessibility checklist (item 6) and the
-  wider responsive range (item 7) are still unverified.
-- There is no way to get the data out. One browser profile is the only
-  copy; clearing site data loses the property. The recovery banner can
-  download an unreadable payload, but that is not a backup or a restore.
+- The test suite is young. It proves the domain, the main flows, storage
+  recovery and backup validation, but the accessibility checklist (item 6)
+  and the wider responsive range (item 7) are still unverified.
+- Backup is manual. Export/restore is a file the user must remember to make;
+  there is no scheduled backup or sync. That is the honest scope for a
+  browser-only app, but one browser profile is still a single copy.
 - Destructive room deletion is still unguarded. Removing a room can leave
   existing reservations short of the supply they were sold against.
 - Accessibility is good in places but unverified as a whole: focus return
@@ -896,14 +910,22 @@ in a terminal transcript.
    - Acceptance met: no failure path discards or overwrites data without
      telling the user first.
 
-4. Add export / restore
-   - One button downloads the full state as JSON; one file input restores
-     it after schema validation and an explicit confirmation.
-   - Restore runs migrate(), rejects a future schema version, and never
-     overwrites silently.
-   - Acceptance: a fresh browser can receive an exported file and render
-     the same rooms, bookings and register. This stays inside the
-     localStorage spec; it is not sync.
+4. Add export / restore — done 2026-11-13
+   - The Data sheet in the front desk header exports the full state as a
+     dated, indented JSON file and restores one through a hidden file input.
+   - Restore rejects invalid JSON, missing versions, malformed collections
+     and future schema versions, then runs migrate(). It names the file and
+     its room, booking and history counts and writes nothing until Replace
+     data is confirmed.
+   - Restoring over an unreadable payload clears that status, so a valid
+     backup is a recovery path. A failed write still surfaces the saving
+     banner, and the sheet says the data is loaded but not saved.
+   - tests/store.test.mjs covers export shape, validation and replacement;
+     tests/flows.mjs exports, clears storage, restores into the fresh desk,
+     cancels a confirmation, and refuses a future version and broken JSON.
+   - Result: 70 domain/store checks and 88 browser checks pass.
+   - Acceptance met: an exported file restores the same rooms, bookings and
+     register into a fresh browser.
 
 5. Guard destructive edits
    - Refuse to delete a room that a pending reservation still needs, and

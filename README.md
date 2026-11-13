@@ -36,6 +36,9 @@ port are different stores, so pick one URL and keep using it.
 - **Arrivals and history** — tiles mark rooms held for an arriving booking.
   Check-in takes every room in the reservation at once. Cancellations,
   no-shows and check-ins are kept in the register.
+- **Saved data** — the Data sheet exports every room, booking and history
+  entry as one JSON file. Restore validates the file and shows what it holds
+  before replacing the current desk; it never merges or overwrites silently.
 
 The UI is designed at 360px first, uses a dark theme only, and keeps primary
 actions in the thumb zone.
@@ -51,9 +54,9 @@ node --test
 ```
 
 It covers room timers, capacity and request fitting, group check-in,
-reservation editing and cancellation, schema migrations from v1 to v4, and
-the storage failure paths (corrupt payloads, blocked storage and failed
-writes).
+reservation editing and cancellation, schema migrations from v1 to v4, the
+storage failure paths (corrupt payloads, blocked storage and failed writes),
+and export/restore validation.
 
 The browser flow suite is optional and needs Playwright:
 
@@ -136,6 +139,21 @@ status to the UI instead of discarding or hiding failures:
 
 The banner is non-blocking; the desk keeps working while it is visible.
 
+### Export and restore
+
+The `Data` sheet in the front desk header exports the persisted state as a
+dated, indented JSON file. The file is the same shape as the
+`hotelmanager:state` value, so it can also be inspected by hand.
+
+Restore reads that file, runs the same `migrate()` path as a normal load,
+and refuses invalid JSON, missing versions, malformed collections and any
+version newer than the app supports. It then names the file and its room,
+booking and history counts and writes nothing until `Replace data` is
+confirmed. Restore replaces the whole desk; it does not merge.
+
+A restore counts as a deliberate replacement, so it also clears an unreadable
+payload. If the write then fails, the saving banner still appears.
+
 ## Where things live
 
 ```text
@@ -145,13 +163,15 @@ css/app.css              layout and components
 js/app.js                bootstrap and repaint wiring
 js/store.js              state container, persistence, migrations and status
 js/components/storage-banner.js  storage recovery and saving banner
+js/components/data-dialog.js     export, restore and confirmation
+js/download.js           dated file download helper
 js/rooms.js              room types, states and timers
 js/reservations.js       availability, bookings, check-in and history
 js/ticker.js             scheduled reconciliation and repaints
 js/views/front-desk.js   the single screen
 js/components/           render helpers and dialogs
 tests/domain.test.mjs    dependency-free domain checks
-tests/store.test.mjs     storage failure and recovery checks
+tests/store.test.mjs     storage failure, export and restore checks
 tests/flows.mjs          optional Playwright flow checks
 package.json             dev commands; no dependencies
 roadmap.txt              rules, spec, decisions, dev log and open work
@@ -159,10 +179,9 @@ roadmap.txt              rules, spec, decisions, dev log and open work
 
 ## Known limitations
 
-- One browser profile and one origin. There is no sync and no general
-  export/restore yet; clearing site data deletes the property. An unreadable
-  payload can be downloaded from the recovery banner, but that is not a
-  backup.
+- One browser profile and one origin. There is no sync and no automatic
+  backup. Export/restore moves data by hand through a JSON file; clearing
+  site data without an export still deletes the property.
 - Deleting a room does not yet check whether a pending reservation still
   needs it.
 - Register history has no pruning or filtering.

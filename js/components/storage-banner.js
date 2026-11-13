@@ -3,6 +3,7 @@ import {
   startEmpty,
   subscribeStorage,
 } from "../store.js";
+import { datedFilename, downloadText } from "../download.js";
 
 const container = document.getElementById("storage-banner");
 
@@ -32,28 +33,6 @@ const COPY = {
 
 let armedStartEmpty = false;
 
-function downloadFilename() {
-  const date = new Date();
-  const stamp = [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-");
-  return `hotelmanager-saved-data-${stamp}.json`;
-}
-
-function download(raw) {
-  const blob = new Blob([raw], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = downloadFilename();
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
-
 function renderUnreadable(status) {
   armedStartEmpty = false;
 
@@ -66,7 +45,12 @@ function renderUnreadable(status) {
   downloadButton.dataset.download = "";
   downloadButton.textContent = "Download saved data";
   downloadButton.disabled = !status.raw;
-  downloadButton.addEventListener("click", () => download(status.raw ?? ""));
+  downloadButton.addEventListener("click", () =>
+    downloadText(
+      status.raw ?? "",
+      datedFilename("hotelmanager-saved-data"),
+    ),
+  );
 
   const emptyButton = document.createElement("button");
   emptyButton.type = "button";

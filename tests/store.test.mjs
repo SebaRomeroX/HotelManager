@@ -52,6 +52,24 @@ function createStorage(options = {}) {
 
 const EMPTY = { version: 4, rooms: [], reservations: [], register: [] };
 const ROOM = { id: "small-1", name: "Small 1", type: "small", state: "vacant" };
+const RESERVATION = {
+  id: "res-1",
+  hostName: "Guest",
+  roomCounts: { small: 1, large: 0, suite: 0 },
+  arrivalDate: "2026-11-20",
+  days: 1,
+  createdAt: "2026-11-13T12:00:00.000Z",
+};
+const HISTORY = {
+  id: "history-1",
+  hostName: "Past Guest",
+  roomCounts: { small: 0, large: 0, suite: 1 },
+  arrivalDate: "2026-11-01",
+  days: 1,
+  status: "cancelled",
+  registeredAt: "2026-11-01T12:00:00.000Z",
+  assignedRooms: [],
+};
 
 test("unreadable JSON keeps the raw payload and blocks writes", async () => {
   const storage = createStorage({ value: "{not json" });
@@ -165,4 +183,124 @@ test("start empty replaces an unreadable payload once the user confirms", async 
   assert.equal(store.getStorageStatus().raw, null);
   assert.deepEqual(store.getState(), EMPTY);
   assert.deepEqual(JSON.parse(storage.value), EMPTY);
+});
+
+// ------------------------------------------------------- export and restore
+
+test("export writes every collection as readable JSON", async () => {
+  const store = await loadStore(createStorage());
+  store.update((state) => ({
+    ...state,
+    rooms: [ROOM],
+    reservations: [RESERVATION],
+    register: [HISTORY],
+  }));
+
+  const exported = JSON.parse(store.exportState());
+  assert.deepEqual(exported, store.getState());
+  assert.equal(exported.rooms.length, 1);
+  assert.equal(exported.reservations[0].hostName, "Guest");
+  assert.equal(exported.register[0].status, "cancelled");
+});
+
+test("a current backup parses and a future schema is refused", async () => {
+  const store = await loadStore(createStorage());
+  store.update((state) => ({
+    ...state,
+    rooms: [ROOM],
+    reservations: [RESERVATION],
+    register: [HISTORY],
+  }));
+
+  const backup = store.exportState();
+  assert.deepEqual(store.parseBackup(backup), store.getState());
+
+  assert.throws(
+    () =>
+      store.parseBackup(
+        JSON.stringify({ ...JSON.parse(backup), version: 5 }),
+      ),
+    /newer version/,
+  );
+});
+
+test("a backup rejects malformed or incomplete files", async () => {
+  const store = await loadStore(createStorage());
+
+  for (const [raw, pattern] of [
+    ["{not json", /not valid JSON/],
+    ["[]", /hotel data/],
+    ["null", /hotel data/],
+    ['"state"', /hotel data/],
+    ['{"version":4}', /hotel data/],
+    ['{"rooms":[]}', /schema version/],
+    ['{"version":"4","rooms":[]}', /schema version/],
+    ['{"version":0,"rooms":[]}', /schema version/],
+    ['{"version":4,"rooms":{}}', /rooms list/],
+    ['{"version":4,"rooms":[null]}', /rooms list/],
+    ['{"version":4,"rooms":[],"reservations":"x"}', /reservations list/],
+  ]) {
+    assert.throws(() => store.parseBackup(raw), pattern, raw);
+  }
+});
+
+test("a legacy backup migrates before it is accepted", async () => {
+  const store = await loadStore(createStorage());
+  const migrated = store.parseBackup(
+    JSON.stringify({
+      version: 1,
+      rooms: [{ id: "r1", name: "Room 1", type: "small" }],
+      reservations: [],
+      register: [],
+    }),
+  );
+
+  assert.equal(migrated.version, 4);
+  assert.equal(migrated.rooms[0].state, "vacant");
+});
+
+test("replace state persists a backup and clears an unreadable status", async () => {
+  const storage = createStorage({ value: "{not json" });
+  const store = await loadStore(storage);
+  assert.equal(store.getStorageStatus().kind, "unreadable");
+
+  const next = store.parseBackup(
+    JSON.stringify({
+      version: 4,
+      rooms: [ROOM],
+      reservations: [RESERVATION],
+      register: [HISTORY],
+    }),
+  );
+
+  let notified = 0;
+  store.subscribe(() => {
+    notified += 1;
+  });
+
+  store.replaceState(next);
+
+  assert.equal(notified, 1);
+  assert.equal(store.getStorageStatus().kind, "ok");
+  assert.deepEqual(store.getState(), next);
+  assert.deepEqual(JSON.parse(storage.value), next);
+});
+
+test("a restore that cannot persist stays visible and reports the failure", async () => {
+  const storage = createStorage({ failWrite: true });
+  const store = await loadStore(storage);
+  const next = store.parseBackup(
+    JSON.stringify({
+      version: 4,
+      rooms: [ROOM],
+      reservations: [],
+      register: [],
+    }),
+  );
+
+  store.replaceState(next);
+
+  assert.equal(store.getStorageStatus().kind, "write-failed");
+  assert.deepEqual(store.getState(), next);
+  assert.equal(storage.value, null);
 });

@@ -8,6 +8,7 @@ import {
 
 const STORAGE_KEY = "hotelmanager:state";
 const SCHEMA_VERSION = 4;
+const COLLECTIONS = ["rooms", "reservations", "register"];
 
 const listeners = new Set();
 const statusListeners = new Set();
@@ -225,6 +226,57 @@ export function getStorageStatus() {
   return { ...storageStatus };
 }
 
+// A backup is the persisted state as a readable file. It carries no wrapper:
+// the same shape migrate() already reads on load.
+export function exportState() {
+  return JSON.stringify(state, null, 2);
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// Restore validates before it can touch the live state. A missing version or
+// a future one is refused outright, and malformed collections are rejected
+// rather than silently normalized away.
+export function parseBackup(raw) {
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("That file is not valid JSON.");
+  }
+
+  if (!isRecord(parsed)) {
+    throw new Error("That file does not contain hotel data.");
+  }
+
+  if (!Number.isInteger(parsed.version) || parsed.version < 1) {
+    throw new Error("That file does not name a schema version.");
+  }
+
+  if (parsed.version > SCHEMA_VERSION) {
+    throw new Error("That file was saved by a newer version of the app.");
+  }
+
+  if (!COLLECTIONS.some((key) => key in parsed)) {
+    throw new Error("That file does not contain hotel data.");
+  }
+
+  for (const key of COLLECTIONS) {
+    if (!(key in parsed)) continue;
+    if (!Array.isArray(parsed[key]) || !parsed[key].every(isRecord)) {
+      throw new Error(`That file has an unreadable ${key} list.`);
+    }
+  }
+
+  try {
+    return migrate(parsed);
+  } catch {
+    throw new Error("That file contains data the app cannot read.");
+  }
+}
+
 export function update(mutator) {
   state = mutator(state) ?? state;
   persist();
@@ -244,14 +296,25 @@ export function subscribeStorage(listener) {
   return () => statusListeners.delete(listener);
 }
 
-export function startEmpty() {
-  state = emptyState();
-  // The recovery UI offered the download first; from here the caller has
-  // deliberately chosen an empty desk over the unreadable payload.
+// Both recovery and restore replace everything. Clearing an unreadable status
+// first lets the write go through; if it fails, persist() reports that and the
+// banner comes back as a saving failure.
+function replace(newState) {
+  state = newState;
   if (storageStatus.kind === "unreadable") setStatus("ok");
   persist();
   listeners.forEach((listener) => listener(state));
   return state;
+}
+
+export function replaceState(next) {
+  return replace(next);
+}
+
+export function startEmpty() {
+  // The recovery UI offered the download first; from here the caller has
+  // deliberately chosen an empty desk over the unreadable payload.
+  return replace(emptyState());
 }
 
 export function reset() {

@@ -47,6 +47,18 @@ p {
   font-weight: 600;
 }
 
+.view__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* The head already owns the stack gap, so the title does not add one. */
+.view__head .view__title {
+  margin-bottom: 0;
+}
+
 .empty {
   padding: var(--space-5);
   border: 1px dashed var(--border);
@@ -245,6 +257,31 @@ p {
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-muted);
+}
+
+.data-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.data-section + .data-section {
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.restore-confirm {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  overflow-wrap: anywhere;
+}
+
+/* Author display beats the UA rule behind the hidden attribute. */
+.restore-confirm[hidden] {
+  display: none;
 }
 
 .form {
