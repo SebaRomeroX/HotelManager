@@ -54,6 +54,7 @@ import {
   reservationRoomCounts,
   reservationRoomTotal,
   roomCountsLabel,
+  roomRemovalConflict,
   sortRegister,
   sortReservations,
   updateReservation,
@@ -604,6 +605,77 @@ test("the single-room occupancy guard delegates to the group guard", () => {
   assert.equal(occupancyConflict(state, "missing", 5, NOW), null);
   assert.equal(occupancyConflictForRooms(state, [], 5, NOW), null);
   assert.equal(occupancyConflictForRooms(state, ["small-1"], 0, NOW), null);
+});
+
+// ---------------------------------------------------- destructive edits
+
+test("deleting a room a pending booking still needs is refused", () => {
+  const state = makeState({
+    rooms: [room("Small 1", "small")],
+    reservations: [
+      booking({
+        hostName: "Ada Lovelace",
+        counts: { small: 1 },
+        arrivalDate: iso(2),
+        days: 2,
+      }),
+    ],
+  });
+
+  const conflict = roomRemovalConflict(state, "small-1", NOW);
+  assert.equal(conflict.reservation.id, "res-1");
+  assert.equal(conflict.reservation.hostName, "Ada Lovelace");
+  assert.equal(conflict.roomType, "small");
+  assert.equal(conflict.isoDate, iso(2));
+});
+
+test("the removal guard checks every night of the booking", () => {
+  const state = makeState({
+    rooms: [room("Small 1", "small"), room("Small 2", "small")],
+    reservations: [
+      booking({
+        id: "long",
+        hostName: "Ada",
+        counts: { small: 1 },
+        arrivalDate: iso(1),
+        days: 3,
+      }),
+      booking({
+        id: "later",
+        hostName: "Bo",
+        counts: { small: 1 },
+        arrivalDate: iso(3),
+        days: 1,
+      }),
+    ],
+  });
+
+  // Both rooms fit until the third night, where both bookings need one.
+  const conflict = roomRemovalConflict(state, "small-1", NOW);
+  assert.equal(conflict.reservation.id, "long");
+  assert.equal(conflict.isoDate, iso(3));
+});
+
+test("a room can go when enough supply remains and history is ignored", () => {
+  const state = makeState({
+    rooms: [room("Small 1", "small"), room("Small 2", "small")],
+    reservations: [booking({ counts: { small: 1 }, arrivalDate: iso(2) })],
+    register: [
+      {
+        id: "history-1",
+        hostName: "Past Guest",
+        roomCounts: { small: 0, large: 0, suite: 1 },
+        arrivalDate: iso(-3),
+        days: 1,
+        status: "cancelled",
+        registeredAt: NOW.toISOString(),
+        assignedRooms: [{ id: "suite-1", name: "Suite 1", type: "suite" }],
+      },
+    ],
+  });
+
+  assert.equal(roomRemovalConflict(state, "small-1", NOW), null);
+  assert.equal(roomRemovalConflict(state, "missing", NOW), null);
 });
 
 // ---------------------------------------------------------- reconciliation

@@ -24,7 +24,8 @@ port are different stores, so pick one URL and keep using it.
 
 ## What it does
 
-- **Rooms** — create, rename, retype and delete rooms.
+- **Rooms** — create, rename, retype and delete rooms. Deleting a room that a
+  pending booking still needs is refused, and the error names the booking.
 - **States** — vacant, to clean, cleaning, occupied and disabled. Occupied and
   cleaning rooms count down; timed disabled rooms come back on their own.
 - **Reservations** — one booking can hold several rooms under one host name,
@@ -56,7 +57,7 @@ node --test
 It covers room timers, capacity and request fitting, group check-in,
 reservation editing and cancellation, schema migrations from v1 to v4, the
 storage failure paths (corrupt payloads, blocked storage and failed writes),
-and export/restore validation.
+export/restore validation, and the guarded room deletion.
 
 The browser flow suite is optional and needs Playwright:
 
@@ -154,6 +155,19 @@ confirmed. Restore replaces the whole desk; it does not merge.
 A restore counts as a deliberate replacement, so it also clears an unreadable
 payload. If the write then fails, the saving banner still appears.
 
+### Destructive edits
+
+Deleting a room asks for a second tap, then checks every pending booking
+against the supply left without that room. If a booking would be short on any
+night of its stay, the delete is refused and the error names the host, the
+room type and the first short night. Rooms already covered by another room of
+the type can still be deleted. Checked-in stays are ignored because their
+room is already out of supply, and register snapshots keep the deleted room's
+name as history.
+
+Clearing the register also takes two taps (`Clear register`, then
+`Confirm clear`). It is the only action that removes history in bulk.
+
 ## Where things live
 
 ```text
@@ -182,8 +196,6 @@ roadmap.txt              rules, spec, decisions, dev log and open work
 - One browser profile and one origin. There is no sync and no automatic
   backup. Export/restore moves data by hand through a JSON file; clearing
   site data without an export still deletes the property.
-- Deleting a room does not yet check whether a pending reservation still
-  needs it.
 - Register history has no pruning or filtering.
 - No accessibility checklist or systematic responsive matrix is recorded yet.
 - No payments, invoices, email, OTA integration or multi-property support.

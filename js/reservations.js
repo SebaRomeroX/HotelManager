@@ -665,6 +665,55 @@ function capacityLeftOn(state, roomType, night, exceptId) {
   return sellableOn(state, roomType, night) - pendingOn(state, roomType, night, exceptId);
 }
 
+// Deleting a room removes supply a pending booking may already have been sold
+// against, and unlike retyping or renaming it cannot be repaired by editing
+// the room again. Walk every pending booking, in arrival order, against the
+// desk without the room and return the first booking (and the night) that
+// would no longer fit. Checked-in stays are skipped because their room is
+// already out of supply; history entries are snapshots that keep their room
+// names on purpose, so they can never block a delete.
+export function roomRemovalConflict(state, roomId, now = new Date()) {
+  const room = (state.rooms ?? []).find((candidate) => candidate.id === roomId);
+  if (!room) return null;
+
+  const without = {
+    ...state,
+    rooms: state.rooms.filter((candidate) => candidate.id !== roomId),
+  };
+
+  const pending = (state.reservations ?? [])
+    .filter(
+      (reservation) =>
+        !reservation.checkedInAt && !isPastReservation(reservation, now),
+    )
+    .sort(byArrival);
+
+  for (const reservation of pending) {
+    const arrival = parseDate(reservation.arrivalDate);
+    const days = Number(reservation.days);
+    if (!arrival || !Number.isInteger(days) || days < 1) continue;
+
+    const counts = reservationRoomCounts(reservation);
+    const wanted = ROOM_TYPES.map(({ value }) => value).filter(
+      (roomType) => (counts[roomType] ?? 0) > 0,
+    );
+
+    for (let index = 0; index < days; index += 1) {
+      const night = new Date(arrival);
+      night.setDate(night.getDate() + index);
+
+      for (const roomType of wanted) {
+        const left = capacityLeftOn(without, roomType, night, reservation.id);
+        if (left < (counts[roomType] ?? 0)) {
+          return { reservation, roomType, isoDate: toISODate(night) };
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 // The room types that can start a booking on this date: at least one room of
 // the type is still free after the other pending bookings that night. The
 // record being edited is excluded, so an edit never hides its own type.

@@ -884,6 +884,125 @@ try {
     ),
   );
   await closeDialog();
+
+  // ---------- M. guarded room deletion ----------
+  const guardState = {
+    version: 4,
+    rooms: [{ id: "one", name: "Only Small", type: "small", state: "vacant" }],
+    reservations: [
+      {
+        id: "guard-res",
+        hostName: "Ada Lovelace",
+        roomCounts: { small: 1, large: 0, suite: 0 },
+        arrivalDate: iso(2),
+        days: 2,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    register: [],
+  };
+  await seed(guardState);
+
+  await page.click('[aria-label="Manage rooms"]');
+  await page.waitForSelector("dialog[open] [data-chips] .chip");
+  await page.click("dialog[open] [data-chips] .chip");
+  await page.click("dialog[open] [data-delete]");
+  check(
+    "delete arms before removing a room",
+    (await page.locator("dialog[open] [data-delete]").textContent()) ===
+      "Confirm delete",
+  );
+
+  await page.click("dialog[open] [data-delete]");
+  await page.waitForSelector("dialog[open] #room-error:not([hidden])");
+  const guardError = await page
+    .locator("dialog[open] #room-error")
+    .textContent();
+  check(
+    "a room a booking still needs cannot be deleted",
+    guardError.includes("Cannot delete Only Small") &&
+      guardError.includes("Ada Lovelace") &&
+      guardError.includes("still needs a Small room"),
+    guardError,
+  );
+  check(
+    "the refused delete keeps the room on the desk",
+    (await stored()).rooms.length === 1,
+  );
+
+  await closeDialog();
+  await seed({
+    ...guardState,
+    rooms: [
+      ...guardState.rooms,
+      { id: "two", name: "Spare Small", type: "small", state: "vacant" },
+    ],
+    register: [
+      {
+        id: "history-1",
+        hostName: "Past Guest",
+        roomCounts: { small: 1, large: 0, suite: 0 },
+        arrivalDate: iso(-2),
+        days: 1,
+        status: "cancelled",
+        registeredAt: new Date().toISOString(),
+        assignedRooms: [{ id: "one", name: "Only Small", type: "small" }],
+      },
+    ],
+  });
+  await page.click('[aria-label="Manage rooms"]');
+  await page.waitForSelector("dialog[open] [data-chips] .chip");
+  await page
+    .locator("dialog[open] [data-chips] .chip", { hasText: "Only Small" })
+    .click();
+  await page.click("dialog[open] [data-delete]");
+  await page.click("dialog[open] [data-delete]");
+  await page.waitForTimeout(200);
+  const afterDelete = await stored();
+  check(
+    "a room can go when another one still covers the booking",
+    afterDelete.rooms.length === 1 && afterDelete.rooms[0].name === "Spare Small",
+    JSON.stringify(afterDelete.rooms),
+  );
+  check(
+    "history keeps the deleted room's name",
+    afterDelete.register[0]?.assignedRooms[0]?.name === "Only Small",
+  );
+  await closeDialog();
+
+  // ---------- N. guarded register clear ----------
+  await seed({
+    version: 4,
+    rooms: [{ id: "r1", name: "Room 1", type: "small", state: "vacant" }],
+    reservations: [],
+    register: [
+      {
+        id: "history-1",
+        hostName: "Past Guest",
+        roomCounts: { small: 1, large: 0, suite: 0 },
+        arrivalDate: iso(-2),
+        days: 1,
+        status: "cancelled",
+        registeredAt: new Date().toISOString(),
+        assignedRooms: [],
+      },
+    ],
+  });
+  await page.click("[data-register]");
+  await page.waitForSelector("dialog[open] [data-clear]");
+  await page.click("dialog[open] [data-clear]");
+  check(
+    "clearing the register arms before deleting history",
+    (await page.locator("dialog[open] [data-clear]").textContent()).trim() ===
+      "Confirm clear" && (await stored()).register.length === 1,
+  );
+  await page.click("dialog[open] [data-clear]");
+  await page.waitForTimeout(150);
+  check(
+    "confirming clears the register",
+    (await stored()).register.length === 0,
+  );
+  await closeDialog();
 } finally {
   await browser.close();
   server.kill();

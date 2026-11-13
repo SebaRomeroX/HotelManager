@@ -10,6 +10,7 @@ import {
   typeLabel,
   updateRoom,
 } from "../rooms.js";
+import { formatDate, roomRemovalConflict } from "../reservations.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -85,19 +86,23 @@ const chipList = dialog.querySelector("[data-chips]");
 let editingId = null;
 let confirmingDelete = false;
 
-function setError(message) {
+function setError(message, { invalid = true } = {}) {
+  nameInput.removeAttribute("aria-invalid");
+  nameInput.removeAttribute("aria-describedby");
+
   if (!message) {
     errorText.hidden = true;
     errorText.textContent = "";
-    nameInput.removeAttribute("aria-invalid");
-    nameInput.removeAttribute("aria-describedby");
     return;
   }
 
   errorText.textContent = message;
   errorText.hidden = false;
-  nameInput.setAttribute("aria-invalid", "true");
-  nameInput.setAttribute("aria-describedby", "room-error");
+
+  if (invalid) {
+    nameInput.setAttribute("aria-invalid", "true");
+    nameInput.setAttribute("aria-describedby", "room-error");
+  }
 }
 
 function syncSubmitState() {
@@ -247,11 +252,28 @@ cancelButton.addEventListener("click", () => {
 deleteButton.addEventListener("click", () => {
   if (editingId === null) return;
 
+  const room = getState().rooms.find((candidate) => candidate.id === editingId);
+  if (!room) return;
+
   if (!confirmingDelete) {
     confirmingDelete = true;
     deleteButton.textContent = "Confirm delete";
     deleteButton.classList.add("btn--armed");
     deleteButton.focus();
+    return;
+  }
+
+  // Deleting the room can strand a pending booking that was sold against it.
+  // The guard names the booking and the first night it would no longer fit.
+  const conflict = roomRemovalConflict(getState(), editingId);
+  if (conflict) {
+    const { reservation, roomType, isoDate } = conflict;
+    setError(
+      `Cannot delete ${room.name}. ${reservation.hostName} still needs a ` +
+        `${typeLabel(roomType)} room on ${formatDate(isoDate)}.`,
+      { invalid: false },
+    );
+    resetDeleteConfirm();
     return;
   }
 

@@ -810,11 +810,23 @@ Newest entries at the bottom.
             browser-only app can offer without a server, and a restore must
             never be an accidental merge or overwrite.
 
+2026-11-13  Room deletion is now guarded by the same capacity math as a
+            booking. roomRemovalConflict() in js/reservations.js builds the
+            desk without the room and walks every pending booking night by
+            night; the first booking that no longer fits stops the delete
+            and names its host, type and short night in the dialog. The
+            guard is in reservations.js because rooms.js cannot import it
+            without a cycle, and because it is a capacity question, not a
+            room mutation. History is deliberately ignored: register
+            snapshots keep the deleted room's name. The register-clear
+            confirmation already existed and now has browser coverage.
+            why: deleting a room removes supply that a sold booking relied
+            on, and unlike editing it cannot be repaired by editing again.
+
 ================================================================
 4. TODO TASKS
 ================================================================
 
-- Deleting a room must first check that no reservation references it
 - Check-out: free an occupied stay into needs cleaning using the register's checked-in entry (the active list no longer carries checked-in records)
 - Propagate duration edits back to a checked-in stay's room timer (checked-in records now live in the register, read-only)
 - Register history has no pruning or filtering; add one when the list grows past a comfortable scroll
@@ -845,7 +857,8 @@ Target grade: 9 / 10
   that can be tested without a browser.
 - Hard cases are handled rather than deferred: the 10:00 boundary, the
   00:00-03:59 night-of rule, cleaning and OOS timers, multi-room atomic
-  check-in, greedy arrival assignment, and one-way schema migrations.
+  check-in, greedy arrival assignment, one-way schema migrations, and room
+  deletion that refuses to strand a pending booking.
 - The mobile UI is deliberate: 360px first, 44px targets, native dialogs,
   stable six-row calendar, explicit focus return after dialogs.
 - Comments explain why, and the dev log records the reasoning behind
@@ -858,8 +871,6 @@ Target grade: 9 / 10
 - Backup is manual. Export/restore is a file the user must remember to make;
   there is no scheduled backup or sync. That is the honest scope for a
   browser-only app, but one browser profile is still a single copy.
-- Destructive room deletion is still unguarded. Removing a room can leave
-  existing reservations short of the supply they were sold against.
 - Accessibility is good in places but unverified as a whole: focus return
   and aria labels exist, yet keyboard paging through the 42-cell grid,
   live-region announcements, contrast and 200% zoom have no pass/fail
@@ -927,12 +938,25 @@ in a terminal transcript.
    - Acceptance met: an exported file restores the same rooms, bookings and
      register into a fresh browser.
 
-5. Guard destructive edits
-   - Refuse to delete a room that a pending reservation still needs, and
-     name the booking in the error. History snapshots may keep a deleted
-     room's name.
-   - Require confirmation before clearing the register.
-   - Acceptance: a capacity guard test proves the refusal and the wording.
+5. Guard destructive edits — done 2026-11-13
+   - Deleting a room now runs roomRemovalConflict() in reservations.js: it
+     walks every pending booking, night by night, against the desk without
+     that room. If the booking would no longer fit, the delete is refused
+     and the dialog names the host, the type and the first short night.
+   - Deleting a room that another room of the type still covers is allowed.
+     Checked-in stays are skipped because their room is already out of
+     supply, and register snapshots are history that keep a deleted room's
+     name.
+   - Clearing the register already required a second tap (Clear register ->
+     Confirm clear); the flow now has browser coverage instead of being
+     assumed.
+   - tests/domain.test.mjs proves refusal, first-short-night detection and
+     the allowed case; tests/flows.mjs exercises the armed delete, the error
+     wording, the allowed delete, the retained history name and the register
+     clear confirmation.
+   - Result: 73 domain/store checks and 95 browser checks pass.
+   - Acceptance met: a capacity guard test proves the refusal and its
+     wording.
 
 6. Run an accessibility pass and record the checklist
    - Keyboard-only: page months, open a day, book, edit, cancel and return
