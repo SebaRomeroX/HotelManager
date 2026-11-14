@@ -75,6 +75,14 @@ checks, ARIA role checks and a 200% text check; `npm test` also enforces the
 colour-contrast pairs. See [`ACCESSIBILITY.md`](ACCESSIBILITY.md) for the
 checklist, the browser used and the result.
 
+It also measures the layout at 320, 360, 390, 768 and 740×360 landscape:
+horizontal scroll, view width, card columns and the three-column count grids.
+A normal run writes nothing; to refresh the committed screenshots, run:
+
+```sh
+SCREENSHOT_DIR=screenshots npm run test:browser
+```
+
 ## Accessibility
 
 - The calendar is a labelled group with a roving tab stop: Arrow keys move by
@@ -208,6 +216,7 @@ tests/domain.test.mjs    dependency-free domain checks
 tests/store.test.mjs     storage failure, export and restore checks
 tests/contrast.test.mjs  WCAG AA checks over the shipped palette
 tests/flows.mjs          optional Playwright flow checks
+screenshots/             committed responsive evidence (320 to landscape)
 ACCESSIBILITY.md         keyboard, ARIA, contrast and zoom checklist
 package.json             dev commands; no dependencies
 roadmap.txt              rules, spec, decisions, dev log and open work
@@ -219,9 +228,9 @@ roadmap.txt              rules, spec, decisions, dev log and open work
   backup. Export/restore moves data by hand through a JSON file; clearing
   site data without an export still deletes the property.
 - Register history has no pruning or filtering.
-- Accessibility is checked in Chromium at 360px only; it has not been tested
-  with a screen reader or a second browser. The responsive range beyond 360px
-  is not recorded yet.
+- Accessibility and the responsive layout are checked in Chromium only, at
+  320–768px plus landscape. There is no screen-reader or second-browser audit,
+  and no physical-device matrix.
 - No payments, invoices, email, OTA integration or multi-property support.
 
 These and the remaining work are tracked in `roadmap.txt`.

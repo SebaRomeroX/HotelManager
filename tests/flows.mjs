@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -55,6 +55,9 @@ const { chromium } = playwright;
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8973);
 const APP_URL = `http://127.0.0.1:${PORT}/`;
+// Screenshots are evidence, not a required artifact: a normal run stays
+// silent and writes nothing. Set SCREENSHOT_DIR to refresh the committed set.
+const screenshotDir = process.env.SCREENSHOT_DIR || null;
 const server = spawn(
   "python3",
   ["-m", "http.server", String(PORT), "--directory", ROOT],
@@ -1329,6 +1332,164 @@ try {
   await page.evaluate(() => {
     document.documentElement.style.fontSize = "";
   });
+
+  // ---------- Q. the responsive range ----------
+  const responsiveState = {
+    version: 4,
+    rooms: [
+      { id: "s1", name: "Small 1", type: "small", state: "vacant" },
+      {
+        id: "s2",
+        name: "Small 2",
+        type: "small",
+        state: "cleaning",
+        cleaningStartedAt: new Date().toISOString(),
+      },
+      { id: "l1", name: "Large 1", type: "large", state: "dirty" },
+      {
+        id: "u1",
+        name: "Suite 1",
+        type: "suite",
+        state: "occupied",
+        stayDays: 3,
+        stayStartedAt: new Date().toISOString(),
+      },
+    ],
+    reservations: [
+      {
+        id: "rr1",
+        hostName: "Responsive Guest",
+        roomCounts: { small: 1, large: 0, suite: 0 },
+        arrivalDate: iso(1),
+        days: 2,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+    register: [
+      {
+        id: "rr2",
+        hostName: "Past Guest",
+        roomCounts: { small: 1, large: 0, suite: 0 },
+        arrivalDate: iso(-3),
+        days: 1,
+        status: "cancelled",
+        registeredAt: new Date().toISOString(),
+        assignedRooms: [],
+      },
+    ],
+  };
+  const widths = [
+    { name: "320", width: 320, height: 800, cards: 2, sheetCards: 2, view: 320 },
+    { name: "360", width: 360, height: 900, cards: 2, sheetCards: 2, view: 360 },
+    { name: "390", width: 390, height: 900, cards: 2, sheetCards: 2, view: 390 },
+    { name: "768", width: 768, height: 900, cards: 3, sheetCards: 3, view: 640 },
+    { name: "landscape", width: 740, height: 360, cards: 3, sheetCards: 3, view: 640 },
+  ];
+  if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
+
+  for (const size of widths) {
+    await page.setViewportSize({ width: size.width, height: size.height });
+    await seed(responsiveState);
+    await page.waitForTimeout(120);
+
+    const layout = await page.evaluate(() => {
+      const columns = (el) =>
+        getComputedStyle(el).gridTemplateColumns.split(" ").filter(Boolean).length;
+      const view = document.querySelector(".view");
+      const grid = document.querySelector(".card-grid");
+      return {
+        docOverflow: document.documentElement.scrollWidth - window.innerWidth,
+        viewOverflow: view.scrollWidth - view.clientWidth,
+        viewWidth: Math.round(view.getBoundingClientRect().width),
+        cards: grid ? columns(grid) : 0,
+        cardHeights: grid
+          ? [...grid.children].map((card) =>
+              Math.round(card.getBoundingClientRect().height),
+            )
+          : [],
+      };
+    });
+    check(
+      `${size.name}: no horizontal scroll`,
+      layout.docOverflow <= 0 && layout.viewOverflow <= 1,
+      JSON.stringify(layout),
+    );
+    check(
+      `${size.name}: the view keeps its intended width`,
+      layout.viewWidth === size.view,
+      `${layout.viewWidth}px`,
+    );
+    check(
+      `${size.name}: room cards hold ${size.cards} columns`,
+      layout.cards === size.cards,
+      `${layout.cards}`,
+    );
+    check(
+      `${size.name}: room cards keep 44px targets`,
+      layout.cardHeights.every((height) => height >= 44),
+      layout.cardHeights.join(", "),
+    );
+
+    if (screenshotDir) {
+      await page.screenshot({
+        path: path.join(screenshotDir, `${size.name}.png`),
+        fullPage: true,
+      });
+    }
+
+    await page.click("[data-cal-filter-toggle]");
+    await page.waitForTimeout(80);
+    const filterColumns = await page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector(".cal-filter__counts"))
+          .gridTemplateColumns.split(" ")
+          .filter(Boolean).length,
+    );
+    check(`${size.name}: the filter keeps three counts`, filterColumns === 3);
+    await page.click("[data-cal-filter-toggle]");
+
+    await page.locator(".cal-cell[data-date]:not(.cal-cell--past)").first().click();
+    await page.waitForSelector("dialog[open] [data-book]");
+    const sheet = await page.evaluate(() => {
+      const open = document.querySelector("dialog[open]");
+      const body = open.querySelector(".dialog__body");
+      const grid = open.querySelector(".card-grid");
+      return {
+        cards: getComputedStyle(grid)
+          .gridTemplateColumns.split(" ")
+          .filter(Boolean).length,
+        overflow: body.scrollWidth - body.clientWidth,
+      };
+    });
+    check(
+      `${size.name}: the day sheet holds ${size.sheetCards} card columns`,
+      sheet.cards === size.sheetCards,
+      `${sheet.cards}`,
+    );
+    check(
+      `${size.name}: the day sheet has no horizontal overflow`,
+      sheet.overflow <= 1,
+      `${sheet.overflow}px`,
+    );
+
+    await page.click("dialog[open] [data-book]");
+    await page.waitForSelector("dialog[open] #reservation-name");
+    const formColumns = await page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector("dialog[open] .room-counts"))
+          .gridTemplateColumns.split(" ")
+          .filter(Boolean).length,
+    );
+    check(
+      `${size.name}: the reservation sheet keeps three counts`,
+      formColumns === 3,
+    );
+
+    console.log(
+      `responsive ${size.name}: view ${layout.viewWidth}px, ` +
+        `${layout.cards} card columns, 3 count columns, no horizontal scroll`,
+    );
+  }
 } finally {
   await browser.close();
   server.kill();

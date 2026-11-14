@@ -472,14 +472,16 @@ p {
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* The 45% floor keeps two cards on a row at 320px; the 150px cap keeps the
+     wider view at three columns instead of squeezing in a fourth. */
+  grid-template-columns: repeat(auto-fill, minmax(min(45%, 150px), 1fr));
   gap: var(--space-2);
 }
 
 /* The today sheet is narrower than the main view and still needs two columns
-   at 360px. */
+   at 320px. */
 .dialog .card-grid {
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(47%, 140px), 1fr));
 }
 
 .card--vacant,

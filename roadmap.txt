@@ -857,6 +857,29 @@ Newest entries at the bottom.
             claim, and the repository now carries the evidence and a guard
             against regressing it.
 
+2026-11-14  The responsive range now has evidence at 320, 360, 390, 768 and
+            740x360 landscape. tests/flows.mjs seeds one room of each state,
+            a pending booking and a register entry, then at each size
+            asserts no document or view horizontal scroll, the intended view
+            width (fluid below 720, the 640px cap above), the room-card
+            column count, 44px card heights, three count columns in the
+            filter and reservation sheets, and the day sheet's column count
+            and body overflow.
+            The 320px probe exposed one gap: the 150px auto-fill floor fits
+            only one card in 288px of content. Both card grids now use a
+            min() floor (45% and 47%) so two cards fit at 320 while the
+            150px cap still holds the wider view at three columns instead of
+            four. Screenshots are opt-in: SCREENSHOT_DIR=screenshots npm run
+            test:browser refreshes the five committed PNGs without leaving
+            a normal run dirty.
+            Results: 320 view 320, 2 cards, 3 counts, no scroll; 360 view
+            360, 2 cards; 390 view 390, 2 cards; 768 view 640, 3 cards;
+            landscape view 640, 3 cards. 76 domain/store/contrast and 173
+            browser checks pass.
+            why: the app was designed at 360 and only spot-checked
+            elsewhere; "mobile first" is a claim until the narrowest and
+            widest sizes are measured.
+
 ================================================================
 4. TODO TASKS
 ================================================================
@@ -880,8 +903,8 @@ Newest entries at the bottom.
 6. GRADE REVIEW
 ================================================================
 
-Current grade: 8 / 10 (2026-11-13)
-Target grade: 9 / 10
+Current grade: 9 / 10 (2026-11-14)
+Target grade: 9 / 10 (met)
 
 6.1 Why this is already better than a toy
 - The scope is honest: three feature areas, no accounts, no network, no
@@ -898,19 +921,20 @@ Target grade: 9 / 10
 - Comments explain why, and the dev log records the reasoning behind
   non-obvious calls. That is rare and it is worth real marks.
 
-6.2 What keeps the grade at 8
-- The test suite is young. It proves the domain, the main flows, storage
-  recovery, backup validation and the accessibility checklist, but the
-  wider responsive range (item 7) is still unverified.
+6.2 What keeps the grade at 9
+- The test suite proves the domain, the main flows, storage recovery, backup
+  validation, the accessibility checklist and five responsive widths, but it
+  is still one browser and one viewport family. It is not a cross-browser or
+  screen-reader audit.
 - Backup is manual. Export/restore is a file the user must remember to make;
   there is no scheduled backup or sync. That is the honest scope for a
   browser-only app, but one browser profile is still a single copy.
-- Accessibility is now verified in one browser at 360px: keyboard paging,
-  focus return, live regions, contrast and 200% text have a pass/fail
-  checklist. It is not a cross-browser or screen-reader audit.
+- Accessibility is verified in Chromium at 360px: keyboard paging, focus
+  return, live regions, contrast and 200% text have a pass/fail checklist.
 - Several modules are now large (reservations.js ~1000 lines, the
   reservation and state dialogs ~700 and ~640). The responsibilities are
-  still coherent, but navigation costs are rising.
+  still coherent, but navigation costs are rising; item 8 is the optional
+  refactor, not a condition of this grade.
 
 6.3 Ordered work that raises the grade
 Highest lift first. Each item must leave proof in the repository, not only
@@ -1017,12 +1041,29 @@ in a terminal transcript.
    - Acceptance met: a short checklist with the browser and result exists and
      can be repeated after any focus or DOM change.
 
-7. Verify the responsive range, not one width
-   - Add screenshot checks at 320, 360, 390, 768 and landscape.
-   - Confirm the three-column count grids and two-up cards survive the
-     narrowest width.
-   - Acceptance: screenshots and a one-line result per width in the dev
-     log.
+7. Verify the responsive range, not one width — done 2026-11-14
+   - tests/flows.mjs now runs the desk at 320, 360, 390, 768 and 740x360
+     landscape. At each size it asserts no document or view horizontal
+     scroll, the intended view width (fluid below 720, the 640px cap above),
+     the room-card column count, 44px card targets, three count columns in
+     the filter and reservation sheets, the day-sheet card columns and that
+     sheet's body overflow.
+   - The room-card grid now uses minmax(min(45%, 150px), 1fr): two cards fit
+     at 320px (140px each) while the 640px view keeps three columns instead
+     of squeezing in a fourth. The day sheet uses the same floor at 140px,
+     so it is two-up at 320px and three-up at 768px.
+   - `SCREENSHOT_DIR=screenshots npm run test:browser` refreshes the committed
+     evidence without making a normal test run dirty; the five PNGs are
+     320.png, 360.png, 390.png, 768.png and landscape.png.
+   - Result: 76 domain/store/contrast checks and 173 browser checks pass.
+   - One line per width:
+     320px: view 320, 2 card columns, 3 counts, no horizontal scroll.
+     360px: view 360, 2 card columns, 3 counts, no horizontal scroll.
+     390px: view 390, 2 card columns, 3 counts, no horizontal scroll.
+     768px: view 640, 3 card columns, 3 counts, no horizontal scroll.
+     landscape: view 640, 3 card columns, 3 counts, no horizontal scroll.
+   - Acceptance met: screenshots and a one-line result per width are in the
+     dev log, and the checks repeat with the browser suite.
 
 8. Only then split the large modules
    - Extract date/time math, capacity math and register snapshots from
