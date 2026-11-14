@@ -22,6 +22,7 @@ import {
   updateReservation,
 } from "../reservations.js";
 import { announce } from "./announcer.js";
+import { clearFormError, showFormError } from "./form-error.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -193,8 +194,7 @@ function setError(problem) {
   errorField = problem?.field ?? null;
 
   if (!problem) {
-    errorText.hidden = true;
-    errorText.textContent = "";
+    clearFormError(errorText);
     for (const input of form.querySelectorAll("[aria-invalid]")) {
       input.removeAttribute("aria-invalid");
       input.removeAttribute("aria-describedby");
@@ -202,8 +202,7 @@ function setError(problem) {
     return;
   }
 
-  errorText.textContent = problem.message;
-  errorText.hidden = false;
+  showFormError(errorText, problem.message);
 
   for (const input of controlsFor(problem.field)) {
     input.setAttribute("aria-invalid", "true");
@@ -224,8 +223,7 @@ function resetCancelConfirm() {
 }
 
 function clearCheckinError() {
-  checkinError.hidden = true;
-  checkinError.textContent = "";
+  clearFormError(checkinError);
 }
 
 function roomTotals(rooms) {
@@ -560,8 +558,7 @@ checkinButton.addEventListener("click", () => {
 
   if (!isArrivingNow({ arrivalDate: values.arrivalDate })) {
     // The 04:00 cutoff passed with the sheet open.
-    checkinError.textContent = "The arrival window has passed.";
-    checkinError.hidden = false;
+    showFormError(checkinError, "The arrival window has passed.");
     return;
   }
 
@@ -591,8 +588,7 @@ checkinButton.addEventListener("click", () => {
   }
 
   if (draft === before || id === null) {
-    checkinError.textContent = "This reservation could not be saved.";
-    checkinError.hidden = false;
+    showFormError(checkinError, "This reservation could not be saved.");
     return;
   }
 
@@ -600,8 +596,7 @@ checkinButton.addEventListener("click", () => {
     (candidate) => candidate.id === id,
   );
   if (!reservation) {
-    checkinError.textContent = "This reservation could not be saved.";
-    checkinError.hidden = false;
+    showFormError(checkinError, "This reservation could not be saved.");
     return;
   }
 
@@ -611,11 +606,12 @@ checkinButton.addEventListener("click", () => {
   const roomIds = arrivingRoomIds(draft, id, now);
 
   if (roomIds.length < needed) {
-    checkinError.textContent =
+    showFormError(
+      checkinError,
       needed === 1
         ? "No free room for this reservation right now."
-        : `Only ${roomIds.length} of ${needed} rooms are free right now.`;
-    checkinError.hidden = false;
+        : `Only ${roomIds.length} of ${needed} rooms are free right now.`,
+    );
     return;
   }
 
@@ -627,10 +623,11 @@ checkinButton.addEventListener("click", () => {
     { exceptId: id },
   );
   if (conflict) {
-    checkinError.textContent =
+    showFormError(
+      checkinError,
       `That stay overlaps ${conflict.hostName}'s arrival on ` +
-      `${formatDate(conflict.arrivalDate)}.`;
-    checkinError.hidden = false;
+        `${formatDate(conflict.arrivalDate)}.`,
+    );
     return;
   }
 
@@ -638,8 +635,7 @@ checkinButton.addEventListener("click", () => {
 
   if (after === draft) {
     // Belt: the domain refused for one of its own reasons.
-    checkinError.textContent = "Those rooms are not free right now.";
-    checkinError.hidden = false;
+    showFormError(checkinError, "Those rooms are not free right now.");
     return;
   }
 

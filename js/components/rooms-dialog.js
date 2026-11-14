@@ -12,6 +12,7 @@ import {
 } from "../rooms.js";
 import { formatDate, roomRemovalConflict } from "../reservations.js";
 import { announce } from "./announcer.js";
+import { clearFormError, showFormError } from "./form-error.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -92,13 +93,11 @@ function setError(message, { invalid = true } = {}) {
   nameInput.removeAttribute("aria-describedby");
 
   if (!message) {
-    errorText.hidden = true;
-    errorText.textContent = "";
+    clearFormError(errorText);
     return;
   }
 
-  errorText.textContent = message;
-  errorText.hidden = false;
+  showFormError(errorText, message);
 
   if (invalid) {
     nameInput.setAttribute("aria-invalid", "true");

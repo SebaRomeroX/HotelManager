@@ -25,6 +25,7 @@ import {
   roomCountsLabel,
 } from "../reservations.js";
 import { announce } from "./announcer.js";
+import { clearFormError, showFormError } from "./form-error.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -228,8 +229,7 @@ function resetArrival() {
   arrivalConfirmation.hidden = true;
   arrivalGroup.hidden = true;
   arrivalGroup.textContent = "";
-  arrivalError.hidden = true;
-  arrivalError.textContent = "";
+  clearFormError(arrivalError);
 }
 
 function startArrival(reservation) {
@@ -270,8 +270,7 @@ function fillArrival(reservation, room) {
 }
 
 function showArrivalError(message) {
-  arrivalError.textContent = message;
-  arrivalError.hidden = false;
+  showFormError(arrivalError, message);
   confirmCheckin.focus();
 }
 
@@ -330,14 +329,12 @@ function render() {
 
 function hideDaysForm() {
   daysForm.hidden = true;
-  daysError.hidden = true;
-  daysError.textContent = "";
+  clearFormError(daysError);
 }
 
 function hideOosForm() {
   oosForm.hidden = true;
-  oosError.hidden = true;
-  oosError.textContent = "";
+  clearFormError(oosError);
 }
 
 function syncOosMax() {
@@ -368,8 +365,7 @@ function commit(roomId, nextState, options) {
 
 function showDaysForm(room) {
   daysForm.hidden = false;
-  daysError.hidden = true;
-  daysError.textContent = "";
+  clearFormError(daysError);
 
   // Only seed on first reveal: re-tapping Occupied must not wipe what was typed.
   if (!daysInput.dataset.ready) {
@@ -383,8 +379,7 @@ function showDaysForm(room) {
 
 function showOosForm(room) {
   oosForm.hidden = false;
-  oosError.hidden = true;
-  oosError.textContent = "";
+  clearFormError(oosError);
 
   // Only seed on first reveal: re-tapping Disabled must not wipe what was
   // typed, but an existing timed marker opens with its remaining duration.
@@ -452,8 +447,7 @@ arrivalCheckin.addEventListener("click", () => {
   resetCancelArm();
   arrivalActions.hidden = true;
   arrivalConfirmation.hidden = false;
-  arrivalError.hidden = true;
-  arrivalError.textContent = "";
+  clearFormError(arrivalError);
   confirmCheckin.focus();
   announce(`Confirm check-in for ${arrivalHost.textContent}.`);
 });
@@ -462,8 +456,7 @@ arrivalBack.addEventListener("click", () => {
   resetCancelArm();
   arrivalConfirmation.hidden = true;
   arrivalActions.hidden = false;
-  arrivalError.hidden = true;
-  arrivalError.textContent = "";
+  clearFormError(arrivalError);
   arrivalCheckin.focus();
 });
 
@@ -547,8 +540,10 @@ daysForm.addEventListener("submit", (event) => {
 
   const days = Number(daysInput.value);
   if (!Number.isInteger(days) || days < STAY_MIN_DAYS || days > STAY_MAX_DAYS) {
-    daysError.textContent = `Enter a number of days between ${STAY_MIN_DAYS} and ${STAY_MAX_DAYS}.`;
-    daysError.hidden = false;
+    showFormError(
+      daysError,
+      `Enter a number of days between ${STAY_MIN_DAYS} and ${STAY_MAX_DAYS}.`,
+    );
     daysInput.focus();
     daysInput.select();
     return;
@@ -558,10 +553,11 @@ daysForm.addEventListener("submit", (event) => {
   // refusal in the domain; here it is the message.
   const conflict = occupancyConflict(getState(), roomId, days);
   if (conflict) {
-    daysError.textContent =
+    showFormError(
+      daysError,
       `That stay overlaps ${conflict.hostName}'s arrival on ` +
-      `${formatDate(conflict.arrivalDate)}.`;
-    daysError.hidden = false;
+        `${formatDate(conflict.arrivalDate)}.`,
+    );
     daysInput.focus();
     daysInput.select();
     return;
@@ -592,11 +588,12 @@ oosForm.addEventListener("submit", (event) => {
   const unit = oosForm.elements.oosUnit.value;
   const until = oosUntilFromDuration(raw, unit);
   if (!until) {
-    oosError.textContent =
+    showFormError(
+      oosError,
       unit === "days"
         ? `Enter a whole number of days between 1 and ${OOS_MAX_DAYS}.`
-        : `Enter a whole number of hours between 1 and ${OOS_MAX_HOURS}.`;
-    oosError.hidden = false;
+        : `Enter a whole number of hours between 1 and ${OOS_MAX_HOURS}.`,
+    );
     oosAmount.focus();
     oosAmount.select();
     return;

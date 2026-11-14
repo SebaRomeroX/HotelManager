@@ -208,7 +208,11 @@ js/components/data-dialog.js     export, restore and confirmation
 js/components/announcer.js       one polite live region for outcomes
 js/download.js           dated file download helper
 js/rooms.js              room types, states and timers
-js/reservations.js       availability, bookings, check-in and history
+js/dates.js              calendar parsing, arrival windows and labels
+js/capacity.js           availability, fitting and conflict guards
+js/register.js           history snapshots and ordering
+js/reservation-record.js stored booking shape, counts and meta line
+js/reservations.js       booking lifecycle; re-exports the domain modules
 js/ticker.js             scheduled reconciliation and repaints
 js/views/front-desk.js   the single screen
 js/components/           render helpers and dialogs

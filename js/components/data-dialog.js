@@ -5,6 +5,7 @@ import {
   replaceState,
 } from "../store.js";
 import { datedFilename, downloadText } from "../download.js";
+import { showFormError } from "./form-error.js";
 
 const dialog = document.createElement("dialog");
 dialog.className = "dialog";
@@ -85,8 +86,7 @@ function setError(message) {
     successText.textContent = "";
     successText.hidden = true;
   }
-  errorText.textContent = message ?? "";
-  errorText.hidden = !message;
+  showFormError(errorText, message ?? "");
 }
 
 function resetRestore() {
