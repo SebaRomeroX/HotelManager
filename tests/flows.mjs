@@ -419,6 +419,45 @@ try {
     roomLine === "Rooms: Small 1, Small 2, Small 3",
     roomLine,
   );
+
+  const checkout = page.locator("dialog[open] [data-checkout]");
+  check(
+    "checked-in history offers check out",
+    (await checkout.count()) === 1,
+  );
+  await checkout.click();
+  await page.waitForTimeout(200);
+  state = await stored();
+  check("check-out records the time", Boolean(state.register[0].checkedOutAt));
+  check(
+    "check-out frees all three rooms to clean",
+    state.rooms.filter((room) => room.state === "dirty").length === 3,
+    JSON.stringify(state.rooms.map((room) => room.state)),
+  );
+  check(
+    "check-out is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "Checked out Arriving Group",
+    ),
+  );
+  check(
+    "the check-out action disappears",
+    (await page.locator("dialog[open] [data-checkout]").count()) === 0,
+  );
+  const checkoutLine = await page
+    .locator("dialog[open] .register-entry__checkout-time")
+    .textContent();
+  check(
+    "the register shows when the room was released",
+    checkoutLine.startsWith("Checked out "),
+    checkoutLine,
+  );
+  check(
+    "focus stays inside the register",
+    await page.evaluate(() =>
+      document.querySelector("dialog[open]").contains(document.activeElement),
+    ),
+  );
   await closeDialog();
 
   // ---------- E. legacy single-room migration ----------

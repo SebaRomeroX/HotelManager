@@ -899,11 +899,32 @@ Newest entries at the bottom.
             not edited: 76 domain/store/contrast and 173 browser checks
             still pass.
 
+2026-11-15  Check-out is now an action on the register's checked-in entry.
+            The active list stopped carrying in-house stays in v3, so the
+            register is the only handle on a stay that is currently
+            occupying rooms. checkOutRegisterEntry() frees every assigned
+            room that is still occupied and whose stayStartedAt matches the
+            entry's registeredAt into To clean, then stamps checkedOutAt.
+            The status stays checked_in (how the booking left the active
+            list); checkedOutAt is the later housekeeping event. Matching the
+            stay stamp means an old entry can never release a room that has
+            been re-let, and already cleaned or otherwise changed rooms are
+            left alone. Calling it twice is a no-op.
+            The register row now shows Check out next to Delete for any
+            checked-in entry without checkedOutAt, so entries whose rooms
+            already auto-cleaned at 10:00 can still be closed. After the tap
+            the action disappears, "Checked out <time>" appears, the global
+            announcer says "Checked out <host>.", and focus moves to that
+            row's Delete because the pressed button is gone.
+            Tests: 80 domain/store/contrast and 180 browser checks pass.
+            why: the room timer could end a stay but history could not, so a
+            checked-in entry stayed "Checked in" forever and early departures
+            had to be faked by editing each room by hand.
+
 ================================================================
 4. TODO TASKS
 ================================================================
 
-- Check-out: free an occupied stay into needs cleaning using the register's checked-in entry (the active list no longer carries checked-in records)
 - Propagate duration edits back to a checked-in stay's room timer (checked-in records now live in the register, read-only)
 - Register history has no pruning or filtering; add one when the list grows past a comfortable scroll
 - Guard OOS/dirty/cleaning against live holds too if hand-moving a held room proves annoying (decided 2026-11-04: occupied only)

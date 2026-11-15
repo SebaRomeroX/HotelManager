@@ -1,11 +1,13 @@
 import { getState, subscribe, update } from "../store.js";
 import {
+  checkOutRegisterEntry,
   clearRegister,
   registerStatusLabel,
   removeRegisterEntry,
   reservationMeta,
   sortRegister,
 } from "../reservations.js";
+import { announce } from "./announcer.js";
 
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -79,6 +81,15 @@ function applyFocus() {
   } else if (request.kind === "delete-index") {
     const target = deletes[request.index] ?? deletes[request.index - 1];
     (target ?? closeButton).focus();
+  } else if (request.kind === "checkout") {
+    // The action disappears once the entry is checked out, so fall back to
+    // that row's Delete, then Close.
+    const checkouts = [...list.querySelectorAll("[data-checkout]")];
+    const target =
+      checkouts.find((button) => button.dataset.id === request.id) ??
+      deletes.find((button) => button.dataset.id === request.id) ??
+      closeButton;
+    target.focus();
   } else if (request.kind === "clear") {
     (clearButton.hidden ? closeButton : clearButton).focus();
   } else {
@@ -91,12 +102,16 @@ function render() {
   // unrelated store render (a ticker step, another tab) does not strand the
   // user on <body>; explicit actions set pendingFocus themselves.
   const active = document.activeElement;
+  const action =
+    active && list.contains(active)
+      ? active.closest("[data-delete], [data-checkout]")
+      : null;
   const retainedFocus =
-    !pendingFocus &&
-    active &&
-    list.contains(active) &&
-    active.hasAttribute("data-delete")
-      ? { kind: "delete", id: active.dataset.id }
+    !pendingFocus && action
+      ? {
+          kind: action.hasAttribute("data-checkout") ? "checkout" : "delete",
+          id: action.dataset.id,
+        }
       : null;
 
   const entries = sortRegister(getState().register ?? []);
@@ -185,8 +200,48 @@ function entryRow(entry) {
     item.append(room);
   }
 
-  item.append(when, remove);
+  item.append(when);
+
+  if (entry.checkedOutAt) {
+    const out = document.createElement("p");
+    out.className = "register-entry__when register-entry__checkout-time";
+    out.textContent = `Checked out ${formatWhen(entry.checkedOutAt)}`.trim();
+    item.append(out);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "register-entry__actions";
+
+  // The room may have auto-cleaned at 10:00, but the entry still closes here:
+  // review the in-house list and release every room this stay started.
+  if (entry.status === "checked_in" && !entry.checkedOutAt) {
+    const checkOut = document.createElement("button");
+    checkOut.type = "button";
+    checkOut.className = "btn register-entry__checkout";
+    checkOut.dataset.checkout = "";
+    checkOut.dataset.id = entry.id;
+    checkOut.textContent = "Check out";
+    checkOut.setAttribute("aria-label", `Check out ${entry.hostName}`);
+    checkOut.addEventListener("click", () => checkOutEntry(entry.id));
+    actions.append(checkOut);
+  }
+
+  actions.append(remove);
+  item.append(actions);
   return item;
+}
+
+function checkOutEntry(id) {
+  const entry = (getState().register ?? []).find(
+    (candidate) => candidate.id === id,
+  );
+  if (!entry) return;
+
+  // The row keeps its Delete button, so focus has somewhere to land after the
+  // Check out action removes itself.
+  pendingFocus = { kind: "checkout", id };
+  update((state) => checkOutRegisterEntry(state, id));
+  announce(`Checked out ${entry.hostName}.`);
 }
 
 function armOrDelete(id) {

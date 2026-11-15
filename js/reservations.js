@@ -312,6 +312,42 @@ export function checkInReservation(state, id, now = new Date()) {
   };
 }
 
+// A check-out uses the register's checked-in entry because the active list no
+// longer holds in-house stays. Every room this check-in actually started goes
+// to "To clean" now, and the entry records when the guest left. The status
+// stays checked_in: it is how the booking left the active list, while
+// checkedOutAt is the later housekeeping event. Comparing the room's stay
+// stamp with registeredAt means an old entry can never release a room that has
+// been re-let since. Already cleaned or otherwise changed rooms are left alone.
+export function checkOutRegisterEntry(state, id, now = new Date()) {
+  const register = state.register ?? [];
+  const entry = register.find((candidate) => candidate.id === id);
+  if (!entry || entry.status !== "checked_in" || entry.checkedOutAt) {
+    return state;
+  }
+
+  const assigned = new Set(
+    (entry.assignedRooms ?? []).map(({ id: roomId }) => roomId),
+  );
+
+  let next = state;
+  for (const room of state.rooms ?? []) {
+    if (!assigned.has(room.id)) continue;
+    if (room.state !== "occupied") continue;
+    if (room.stayStartedAt !== entry.registeredAt) continue;
+    next = setRoomState(next, room.id, "dirty");
+  }
+
+  return {
+    ...next,
+    register: (next.register ?? register).map((candidate) =>
+      candidate.id === id
+        ? { ...candidate, checkedOutAt: now.toISOString() }
+        : candidate,
+    ),
+  };
+}
+
 function isNoShow(reservation, now) {
   if (reservation.checkedInAt) return false;
 

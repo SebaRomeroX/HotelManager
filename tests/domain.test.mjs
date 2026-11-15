@@ -28,6 +28,7 @@ import {
   availabilityOn,
   bookableRoomTypes,
   checkInReservation,
+  checkOutRegisterEntry,
   checkoutDate,
   clearRegister,
   formatDate,
@@ -593,6 +594,118 @@ test("check-in refuses a stay that would strand a later booking", () => {
     { exceptId: "now" },
   );
   assert.equal(conflict.id, "later");
+});
+
+test("check-out frees the stay's rooms and records when it ended", () => {
+  const checkedIn = checkInReservation(
+    makeState({
+      reservations: [
+        booking({
+          hostName: "Departing",
+          counts: { small: 2 },
+          arrivalDate: iso(0),
+          days: 3,
+        }),
+      ],
+    }),
+    "res-1",
+    NOW,
+  );
+  const entryId = checkedIn.register[0].id;
+  const later = at(11, 13, 15, 30);
+
+  const done = checkOutRegisterEntry(checkedIn, entryId, later);
+  assert.equal(done.register[0].status, "checked_in");
+  assert.equal(done.register[0].checkedOutAt, later.toISOString());
+  assert.deepEqual(
+    done.rooms
+      .filter((candidate) => candidate.state === "dirty")
+      .map(({ name }) => name),
+    ["Small 1", "Small 2"],
+  );
+  assert.equal(
+    done.rooms.find((candidate) => candidate.name === "Small 2").stayStartedAt,
+    undefined,
+  );
+  assert.equal(
+    done.rooms.find((candidate) => candidate.name === "Small 3").state,
+    "vacant",
+  );
+
+  // Idempotent: the second call is the same reference.
+  assert.equal(checkOutRegisterEntry(done, entryId, at(11, 13, 16)), done);
+});
+
+test("check-out never releases a room from a later stay", () => {
+  const entry = registerEntry(
+    booking({ counts: { small: 1 }, arrivalDate: iso(-1) }),
+    "checked_in",
+    {
+      registeredAt: at(11, 9).toISOString(),
+      assignedRooms: [{ id: "small-1", name: "Small 1", type: "small" }],
+    },
+  );
+  const relet = room("Small 1", "small", "occupied", {
+    stayDays: 2,
+    stayStartedAt: at(11, 15).toISOString(),
+  });
+  const state = makeState({ rooms: [relet], register: [entry] });
+
+  const done = checkOutRegisterEntry(state, entry.id, at(11, 16));
+  assert.equal(done.rooms[0].state, "occupied");
+  assert.equal(done.rooms[0].stayStartedAt, at(11, 15).toISOString());
+  assert.equal(done.register[0].checkedOutAt, at(11, 16).toISOString());
+});
+
+test("check-out closes an entry whose rooms already auto-cleaned", () => {
+  const entry = registerEntry(
+    booking({ counts: { small: 1 }, arrivalDate: iso(-1) }),
+    "checked_in",
+    {
+      registeredAt: at(11, 9).toISOString(),
+      assignedRooms: [{ id: "small-1", name: "Small 1", type: "small" }],
+    },
+  );
+  const state = makeState({
+    rooms: [room("Small 1", "small", "dirty")],
+    register: [entry],
+  });
+
+  const done = checkOutRegisterEntry(state, entry.id, at(11, 12));
+  assert.equal(done.rooms[0].state, "dirty");
+  assert.equal(done.register[0].checkedOutAt, at(11, 12).toISOString());
+});
+
+test("check-out refuses missing, cancelled and already checked-out entries", () => {
+  const missing = makeState();
+  assert.equal(checkOutRegisterEntry(missing, "missing", NOW), missing);
+
+  const cancelled = makeState({
+    register: [
+      {
+        id: "cancelled",
+        hostName: "Gone",
+        status: "cancelled",
+        registeredAt: NOW.toISOString(),
+        assignedRooms: [],
+      },
+    ],
+  });
+  assert.equal(checkOutRegisterEntry(cancelled, "cancelled", NOW), cancelled);
+
+  const closed = makeState({
+    register: [
+      {
+        id: "closed",
+        hostName: "Left",
+        status: "checked_in",
+        registeredAt: NOW.toISOString(),
+        checkedOutAt: NOW.toISOString(),
+        assignedRooms: [],
+      },
+    ],
+  });
+  assert.equal(checkOutRegisterEntry(closed, "closed", NOW), closed);
 });
 
 test("the single-room occupancy guard delegates to the group guard", () => {
