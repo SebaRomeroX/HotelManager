@@ -65,12 +65,15 @@ export function occupancyConflict(
 // without enough rooms of its type on its arrival morning. Arrivals are counted
 // per room because one booking may now hold several; futures are checked one
 // booking at a time, the same looseness the single-room guard always had.
+// startedAt is the original check-in stamp when extending an in-house stay. It
+// keeps the expiry on the stay's own arrival day instead of restarting the
+// count from now, which would overstate how long the rooms are held.
 export function occupancyConflictForRooms(
   state,
   roomIds,
   days,
   now = new Date(),
-  { exceptId = null } = {},
+  { exceptId = null, startedAt = null } = {},
 ) {
   const rooms = state.rooms ?? [];
   const taking = new Set(roomIds);
@@ -82,7 +85,7 @@ export function occupancyConflictForRooms(
     return null; // setRoomState refuses these anyway
   }
 
-  const expiry = stayExpiry(now.toISOString(), count);
+  const expiry = stayExpiry(startedAt ?? now.toISOString(), count);
   const takenTypes = new Set(
     rooms.filter((room) => taking.has(room.id)).map((room) => room.type),
   );

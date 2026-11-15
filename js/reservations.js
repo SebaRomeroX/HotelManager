@@ -4,8 +4,10 @@ import {
   STAY_MIN_DAYS,
   setRoomState,
   sortRooms,
+  updateRoom,
 } from "./rooms.js";
 import {
+  formatDate,
   isArrivingNow,
   isPastReservation,
   isReadOnlyReservation,
@@ -312,13 +314,30 @@ export function checkInReservation(state, id, now = new Date()) {
   };
 }
 
+// The rooms a checked-in entry still holds: assigned, occupied, and started by
+// this very check-in. Comparing the stay stamp is what stops an old entry from
+// touching a room that has since been re-let.
+function checkedInRoomIds(state, entry) {
+  const assigned = new Set(
+    (entry.assignedRooms ?? []).map(({ id }) => id),
+  );
+
+  return (state.rooms ?? [])
+    .filter(
+      (room) =>
+        assigned.has(room.id) &&
+        room.state === "occupied" &&
+        room.stayStartedAt === entry.registeredAt,
+    )
+    .map((room) => room.id);
+}
+
 // A check-out uses the register's checked-in entry because the active list no
 // longer holds in-house stays. Every room this check-in actually started goes
 // to "To clean" now, and the entry records when the guest left. The status
 // stays checked_in: it is how the booking left the active list, while
-// checkedOutAt is the later housekeeping event. Comparing the room's stay
-// stamp with registeredAt means an old entry can never release a room that has
-// been re-let since. Already cleaned or otherwise changed rooms are left alone.
+// checkedOutAt is the later housekeeping event. Already cleaned or otherwise
+// changed rooms are left alone.
 export function checkOutRegisterEntry(state, id, now = new Date()) {
   const register = state.register ?? [];
   const entry = register.find((candidate) => candidate.id === id);
@@ -326,16 +345,9 @@ export function checkOutRegisterEntry(state, id, now = new Date()) {
     return state;
   }
 
-  const assigned = new Set(
-    (entry.assignedRooms ?? []).map(({ id: roomId }) => roomId),
-  );
-
   let next = state;
-  for (const room of state.rooms ?? []) {
-    if (!assigned.has(room.id)) continue;
-    if (room.state !== "occupied") continue;
-    if (room.stayStartedAt !== entry.registeredAt) continue;
-    next = setRoomState(next, room.id, "dirty");
+  for (const roomId of checkedInRoomIds(state, entry)) {
+    next = setRoomState(next, roomId, "dirty");
   }
 
   return {
@@ -344,6 +356,65 @@ export function checkOutRegisterEntry(state, id, now = new Date()) {
       candidate.id === id
         ? { ...candidate, checkedOutAt: now.toISOString() }
         : candidate,
+    ),
+  };
+}
+
+// Why a duration change to a checked-in stay cannot be applied, or null. The
+// register entry is the booking record; its duration must still fit the
+// rooms' shared timer and must not strand a later booking.
+export function checkedInStayDaysError(state, id, days, now = new Date()) {
+  const entry = (state.register ?? []).find((candidate) => candidate.id === id);
+  if (!entry || entry.status !== "checked_in" || entry.checkedOutAt) {
+    return "That stay is no longer active.";
+  }
+
+  const count = Number(days);
+  if (!Number.isInteger(count) || count < STAY_MIN_DAYS || count > STAY_MAX_DAYS) {
+    return `Enter a number of days between ${STAY_MIN_DAYS} and ${STAY_MAX_DAYS}.`;
+  }
+
+  const roomIds = checkedInRoomIds(state, entry);
+  if (roomIds.length === 0) return "That stay has already ended.";
+
+  const conflict = occupancyConflictForRooms(state, roomIds, count, now, {
+    startedAt: entry.registeredAt,
+  });
+  if (conflict) {
+    return (
+      `That stay overlaps ${conflict.hostName}'s arrival on ` +
+      `${formatDate(conflict.arrivalDate)}.`
+    );
+  }
+
+  return null;
+}
+
+// Change the duration of a checked-in stay. The register record and every room
+// timer it still holds move together, and the original stayStartedAt is kept so
+// an extension counts from the arrival day instead of restarting the stay now.
+export function updateCheckedInStayDays(state, id, days, now = new Date()) {
+  if (checkedInStayDaysError(state, id, days, now)) return state;
+
+  const entry = state.register.find((candidate) => candidate.id === id);
+  const count = Number(days);
+  const roomIds = new Set(checkedInRoomIds(state, entry));
+
+  let next = state;
+  let roomsChanged = false;
+  for (const room of state.rooms ?? []) {
+    if (!roomIds.has(room.id) || room.stayDays === count) continue;
+    next = updateRoom(next, room.id, { stayDays: count });
+    roomsChanged = true;
+  }
+
+  const daysChanged = entry.days !== count;
+  if (!roomsChanged && !daysChanged) return state;
+
+  return {
+    ...next,
+    register: (next.register ?? state.register).map((candidate) =>
+      candidate.id === id ? { ...candidate, days: count } : candidate,
     ),
   };
 }

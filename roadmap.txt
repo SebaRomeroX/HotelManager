@@ -921,11 +921,35 @@ Newest entries at the bottom.
             checked-in entry stayed "Checked in" forever and early departures
             had to be faked by editing each room by hand.
 
+2026-11-15  A checked-in stay's duration is editable from its register entry,
+            and both duration paths now move together. updateCheckedInStayDays()
+            writes the new count to the register record and to every room
+            timer the stay still holds, keeping the original stayStartedAt so
+            an extension counts from the arrival day instead of restarting
+            the stay now. checkedInStayDaysError() rejects an ended or
+            checked-out stay, invalid counts and an extension that would
+            strand a later booking; occupancyConflictForRooms() gained a
+            startedAt option so that guard measures from the real check-in
+            stamp. The register row shows Change days while at least one
+            assigned room is still occupied; the inline form seeds the booked
+            days, refuses 0/366 with the usual message and announces
+            "Stay for <host> is now N days."
+            The room sheet's Occupied form now recognises the same stay: for
+            an in-house room it calls the same update, so a group's other
+            rooms and the register record follow; for an occupied room with
+            no booking it keeps that room's own start instead of restarting
+            the stay. Its submit button reads "Save days" when retiming an
+            occupied room.
+            Tests: 83 domain/store/contrast and 191 browser checks pass.
+            why: checked-in records live in the register and were read-only,
+            so the desk could only change one room's timer by hand and the
+            history record never matched it. Now the booking and the rooms
+            have one duration.
+
 ================================================================
 4. TODO TASKS
 ================================================================
 
-- Propagate duration edits back to a checked-in stay's room timer (checked-in records now live in the register, read-only)
 - Register history has no pruning or filtering; add one when the list grows past a comfortable scroll
 - Guard OOS/dirty/cleaning against live holds too if hand-moving a held room proves annoying (decided 2026-11-04: occupied only)
 - Arrival sheet hides room-state overrides: cancel the booking first to mark a held room OOS/dirty (revisit if the desk needs it mid-arrival)

@@ -37,7 +37,9 @@ port are different stores, so pick one URL and keep using it.
 - **Arrivals and history** — tiles mark rooms held for an arriving booking.
   Check-in takes every room in the reservation at once. Cancellations,
   no-shows and check-ins are kept in the register, where a checked-in entry
-  can be checked out: its rooms go to To clean and the entry records the time.
+  can be checked out (its rooms go to To clean and the entry records the time)
+  or have its duration changed. A duration change moves the entry's record and
+  every room timer the stay still holds together.
 - **Saved data** — the Data sheet exports every room, booking and history
   entry as one JSON file. Restore validates the file and shows what it holds
   before replacing the current desk; it never merges or overwrites silently.
@@ -56,9 +58,10 @@ node --test
 ```
 
 It covers room timers, capacity and request fitting, group check-in and
-check-out, reservation editing and cancellation, schema migrations from v1 to
-v4, the storage failure paths (corrupt payloads, blocked storage and failed
-writes), export/restore validation, and the guarded room deletion.
+check-out, checked-in duration edits, reservation editing and cancellation,
+schema migrations from v1 to v4, the storage failure paths (corrupt payloads,
+blocked storage and failed writes), export/restore validation, and the guarded
+room deletion.
 
 The browser flow suite is optional and needs Playwright:
 

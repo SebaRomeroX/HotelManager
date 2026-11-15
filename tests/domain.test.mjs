@@ -29,6 +29,7 @@ import {
   bookableRoomTypes,
   checkInReservation,
   checkOutRegisterEntry,
+  checkedInStayDaysError,
   checkoutDate,
   clearRegister,
   formatDate,
@@ -58,6 +59,7 @@ import {
   roomRemovalConflict,
   sortRegister,
   sortReservations,
+  updateCheckedInStayDays,
   updateReservation,
 } from "../js/reservations.js";
 
@@ -706,6 +708,132 @@ test("check-out refuses missing, cancelled and already checked-out entries", () 
     ],
   });
   assert.equal(checkOutRegisterEntry(closed, "closed", NOW), closed);
+});
+
+test("a checked-in duration change updates the record and all room timers", () => {
+  const checkedIn = checkInReservation(
+    makeState({
+      reservations: [
+        booking({ counts: { small: 2 }, arrivalDate: iso(-1), days: 2 }),
+      ],
+    }),
+    "res-1",
+    at(11, 11, 9),
+  );
+  const entryId = checkedIn.register[0].id;
+  const next = updateCheckedInStayDays(checkedIn, entryId, 4, NOW);
+
+  assert.equal(next.register[0].days, 4);
+  const stays = next.rooms.filter((room) => room.state === "occupied");
+  assert.equal(stays.length, 2);
+  assert.deepEqual(
+    stays.map(({ stayDays }) => stayDays),
+    [4, 4],
+  );
+  assert.deepEqual(
+    stays.map(({ stayStartedAt }) => stayStartedAt),
+    [at(11, 11, 9).toISOString(), at(11, 11, 9).toISOString()],
+  );
+
+  // Same duration is a no-op, not a rewrite.
+  assert.equal(updateCheckedInStayDays(next, entryId, 4, NOW), next);
+});
+
+test("extending a checked-in stay counts from its arrival day", () => {
+  const checkedIn = checkInReservation(
+    makeState({
+      reservations: [
+        booking({ counts: { small: 2 }, arrivalDate: iso(-1), days: 2 }),
+        booking({
+          id: "later",
+          hostName: "Later Guest",
+          counts: { small: 2 },
+          arrivalDate: iso(2),
+          days: 1,
+        }),
+      ],
+    }),
+    "res-1",
+    at(11, 11, 9),
+  );
+  const entryId = checkedIn.register[0].id;
+
+  // The room frees at 10:00 on the 14th, exactly when the later booking
+  // arrives, so three days still fits. Counting from now would refuse this.
+  assert.equal(checkedInStayDaysError(checkedIn, entryId, 3, NOW), null);
+  assert.equal(
+    updateCheckedInStayDays(checkedIn, entryId, 3, NOW).register[0].days,
+    3,
+  );
+
+  const problem = checkedInStayDaysError(checkedIn, entryId, 4, NOW);
+  assert.match(problem, /Later Guest/);
+  assert.equal(updateCheckedInStayDays(checkedIn, entryId, 4, NOW), checkedIn);
+});
+
+test("a checked-in duration change refuses ended, checked-out and invalid stays", () => {
+  const checkedIn = checkInReservation(
+    makeState({
+      reservations: [
+        booking({ counts: { small: 1 }, arrivalDate: iso(-1), days: 2 }),
+      ],
+    }),
+    "res-1",
+    at(11, 11, 9),
+  );
+  const entryId = checkedIn.register[0].id;
+
+  const checkedOut = checkOutRegisterEntry(checkedIn, entryId, NOW);
+  assert.equal(updateCheckedInStayDays(checkedOut, entryId, 4, NOW), checkedOut);
+  assert.equal(
+    checkedInStayDaysError(checkedOut, entryId, 4, NOW),
+    "That stay is no longer active.",
+  );
+
+  const cleaned = makeState({
+    rooms: checkedIn.rooms.map((room) => ({ ...room, state: "dirty" })),
+    register: checkedIn.register,
+  });
+  assert.equal(updateCheckedInStayDays(cleaned, entryId, 4, NOW), cleaned);
+  assert.equal(
+    checkedInStayDaysError(cleaned, entryId, 4, NOW),
+    "That stay has already ended.",
+  );
+
+  assert.match(
+    checkedInStayDaysError(checkedIn, entryId, 0, NOW),
+    /between 1 and 365/,
+  );
+  assert.match(
+    checkedInStayDaysError(checkedIn, entryId, 1.5, NOW),
+    /between 1 and 365/,
+  );
+  assert.equal(updateCheckedInStayDays(checkedIn, entryId, 0, NOW), checkedIn);
+
+  // A room that has been re-let belongs to a different stay, not this entry.
+  const relet = makeState({
+    rooms: [
+      room("Small 1", "small", "occupied", {
+        stayDays: 2,
+        stayStartedAt: at(11, 15).toISOString(),
+      }),
+    ],
+    register: [
+      registerEntry(
+        booking({ counts: { small: 1 }, arrivalDate: iso(-1), days: 1 }),
+        "checked_in",
+        {
+          registeredAt: at(11, 11, 9).toISOString(),
+          assignedRooms: [{ id: "small-1", name: "Small 1", type: "small" }],
+        },
+      ),
+    ],
+  });
+  assert.equal(
+    checkedInStayDaysError(relet, "res-1", 4, NOW),
+    "That stay has already ended.",
+  );
+  assert.equal(updateCheckedInStayDays(relet, "res-1", 4, NOW), relet);
 });
 
 test("the single-room occupancy guard delegates to the group guard", () => {

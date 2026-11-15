@@ -411,6 +411,34 @@ try {
     (await page.locator(".card--arriving").count()) === 0,
   );
 
+  // The room sheet edits the same stay timer; the register record must follow.
+  await page.click('.card[data-id="s1"]');
+  await page.waitForSelector("dialog[open] .state-row");
+  await page.click('dialog[open] .state-row[data-value="occupied"]');
+  const roomDays = page.locator(
+    'dialog[open] [data-days] input[name="days"]',
+  );
+  check(
+    "the room-sheet days form seeds the stay",
+    (await roomDays.inputValue()) === "2",
+  );
+  await roomDays.fill("3");
+  await page.click('dialog[open] [data-days] button[type="submit"]');
+  await page.waitForTimeout(200);
+  state = await stored();
+  check(
+    "a room-timer edit updates the register duration",
+    state.register[0].days === 3,
+  );
+  check(
+    "a room-timer edit keeps the original start",
+    state.rooms
+      .filter((room) => room.state === "occupied")
+      .every(
+        (room) => room.stayStartedAt === state.register[0].registeredAt,
+      ),
+  );
+
   await page.click("[data-register]");
   await page.waitForTimeout(100);
   const roomLine = await page.locator("dialog[open] .register-entry__room").textContent();
@@ -418,6 +446,55 @@ try {
     "the register names all three rooms",
     roomLine === "Rooms: Small 1, Small 2, Small 3",
     roomLine,
+  );
+
+  const daysToggle = page.locator("dialog[open] [data-days]");
+  check(
+    "checked-in history offers a duration edit",
+    (await daysToggle.count()) === 1,
+  );
+  await daysToggle.click();
+  const daysInput = page.locator("dialog[open] [data-days-input]");
+  check(
+    "the duration editor is seeded with the booked days",
+    (await daysInput.inputValue()) === "3",
+  );
+  await daysInput.fill("0");
+  await page.click("dialog[open] [data-days-save]");
+  check(
+    "a zero-day stay is refused",
+    (await page.locator("dialog[open] [data-days-error]").textContent()).includes(
+      "between 1 and 365",
+    ),
+  );
+  await daysInput.fill("4");
+  await page.click("dialog[open] [data-days-save]");
+  await page.waitForTimeout(200);
+  state = await stored();
+  check("the register duration changes", state.register[0].days === 4);
+  check(
+    "all three room timers follow",
+    state.rooms.filter((room) => room.stayDays === 4).length === 3,
+  );
+  check(
+    "the original stay start is kept",
+    (() => {
+      const stays = state.rooms.filter((room) => room.state === "occupied");
+      return (
+        new Set(stays.map((room) => room.stayStartedAt)).size === 1 &&
+        stays[0].stayStartedAt === state.register[0].registeredAt
+      );
+    })(),
+  );
+  check(
+    "the duration change is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "is now 4 days",
+    ),
+  );
+  check(
+    "the duration editor closes",
+    (await page.locator("dialog[open] [data-days-input]").count()) === 0,
   );
 
   const checkout = page.locator("dialog[open] [data-checkout]");

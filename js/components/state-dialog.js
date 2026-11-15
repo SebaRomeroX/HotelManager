@@ -14,6 +14,7 @@ import {
   arrivingAssignment,
   arrivingRoomIds,
   checkInReservation,
+  checkedInStayDaysError,
   checkoutDate,
   formatDate,
   occupancyConflict,
@@ -23,6 +24,7 @@ import {
   reservationRoomCounts,
   reservationRoomTotal,
   roomCountsLabel,
+  updateCheckedInStayDays,
 } from "../reservations.js";
 import { announce } from "./announcer.js";
 import { clearFormError, showFormError } from "./form-error.js";
@@ -201,6 +203,7 @@ const rows = [...dialog.querySelectorAll(".state-row")];
 const daysForm = dialog.querySelector("[data-days]");
 const daysInput = dialog.querySelector("#stay-days");
 const daysError = dialog.querySelector("[data-days-error]");
+const daysSubmit = daysForm.querySelector('button[type="submit"]');
 const daysCancel = dialog.querySelector("[data-days-cancel]");
 const oosForm = dialog.querySelector("[data-oos]");
 const oosAmount = dialog.querySelector("#oos-amount");
@@ -366,6 +369,10 @@ function commit(roomId, nextState, options) {
 function showDaysForm(room) {
   daysForm.hidden = false;
   clearFormError(daysError);
+
+  // The same form starts a stay or retimes an existing one; the verb should
+  // tell the desk which it is about to do.
+  daysSubmit.textContent = room.state === "occupied" ? "Save days" : "Set occupied";
 
   // Only seed on first reveal: re-tapping Occupied must not wipe what was typed.
   if (!daysInput.dataset.ready) {
@@ -549,9 +556,74 @@ daysForm.addEventListener("submit", (event) => {
     return;
   }
 
+  const state = getState();
+  const room = state.rooms.find((candidate) => candidate.id === roomId);
+
+  // An in-house stay's duration belongs to its register entry. Editing it
+  // here updates every room the booking still holds, not just this one, and
+  // updates the history record in the same write.
+  const entry =
+    room?.state === "occupied" && room.stayStartedAt
+      ? (state.register ?? []).find(
+          (candidate) =>
+            candidate.status === "checked_in" &&
+            !candidate.checkedOutAt &&
+            (candidate.assignedRooms ?? []).some(({ id }) => id === roomId) &&
+            candidate.registeredAt === room.stayStartedAt,
+        )
+      : null;
+
+  if (entry) {
+    const problem = checkedInStayDaysError(state, entry.id, days);
+    if (problem) {
+      showFormError(daysError, problem);
+      daysInput.focus();
+      daysInput.select();
+      return;
+    }
+
+    update((current) => updateCheckedInStayDays(current, entry.id, days));
+    dialog.close();
+    focusCard(roomId);
+    return;
+  }
+
+  // A manual retime of an occupied room with no booking keeps that room's own
+  // start instead of pretending the stay began now.
+  if (room?.state === "occupied" && room.stayStartedAt) {
+    const startedAt = room.stayStartedAt;
+    const conflict = occupancyConflictForRooms(
+      state,
+      [roomId],
+      days,
+      new Date(),
+      { startedAt },
+    );
+    if (conflict) {
+      showFormError(
+        daysError,
+        `That stay overlaps ${conflict.hostName}'s arrival on ` +
+          `${formatDate(conflict.arrivalDate)}.`,
+      );
+      daysInput.focus();
+      daysInput.select();
+      return;
+    }
+
+    update((current) =>
+      setRoomState(current, roomId, "occupied", {
+        days,
+        now: new Date(startedAt),
+      }),
+    );
+    dialog.close();
+    focusCard(roomId);
+    return;
+  }
+
   // The stay must not eat a room some booking is counting on. Same-reference
   // refusal in the domain; here it is the message.
-  const conflict = occupancyConflict(getState(), roomId, days);
+  const conflict = occupancyConflict(state, roomId, days);
   if (conflict) {
     showFormError(
       daysError,
