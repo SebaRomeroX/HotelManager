@@ -62,10 +62,10 @@ node --test
 ```
 
 It covers room timers, capacity and request fitting, group check-in and
-check-out, checked-in duration edits, register filtering and pruning,
-reservation editing and cancellation, schema migrations from v1 to v4, the
-storage failure paths (corrupt payloads, blocked storage and failed writes),
-export/restore validation, and the guarded room deletion.
+check-out, checked-in duration edits, held-room state guards, register
+filtering and pruning, reservation editing and cancellation, schema migrations
+from v1 to v4, the storage failure paths (corrupt payloads, blocked storage and
+failed writes), export/restore validation, and the guarded room deletion.
 
 The browser flow suite is optional and needs Playwright:
 
@@ -204,7 +204,12 @@ room is already out of supply, and register snapshots keep the deleted room's
 name as history.
 
 Clearing the register also takes two taps (`Clear register`, then
-`Confirm clear`). It is the only action that removes history in bulk.
+`Confirm clear`) and removes every entry, open stays included. `Clear old`
+takes the same guard and removes only finished entries (cancelled, no-show or
+checked-out) whose close time is at least 30 days old; a stay registered long
+ago but checked out today is still new history. Open checked-in stays are never
+pruned, because the entry is the only handle on the room and the way an early
+departure is recorded. Neither action touches rooms or pending bookings.
 
 ## Where things live
 
@@ -221,7 +226,7 @@ js/download.js           dated file download helper
 js/rooms.js              room types, states and timers
 js/dates.js              calendar parsing, arrival windows and labels
 js/capacity.js           availability, fitting and conflict guards
-js/register.js           history snapshots and ordering
+js/register.js           history snapshots, ordering, filters and counts
 js/reservation-record.js stored booking shape, counts and meta line
 js/reservations.js       booking lifecycle; re-exports the domain modules
 js/ticker.js             scheduled reconciliation and repaints
@@ -242,7 +247,11 @@ roadmap.txt              rules, spec, decisions, dev log and open work
 - One browser profile and one origin. There is no sync and no automatic
   backup. Export/restore moves data by hand through a JSON file; clearing
   site data without an export still deletes the property.
-- Register history has no pruning or filtering.
+- Register pruning only retires finished entries after 30 days; an open
+  checked-in stay stays until it is checked out, and `Clear register` removes
+  everything, open stays included.
+- A room held by an arriving booking cannot be marked out of order or cleaned
+  from its sheet: cancel the arrival first, or the hold would be left short.
 - Accessibility and the responsive layout are checked in Chromium only, at
   320–768px plus landscape. There is no screen-reader or second-browser audit,
   and no physical-device matrix.
