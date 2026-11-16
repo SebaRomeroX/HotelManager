@@ -968,11 +968,26 @@ Newest entries at the bottom.
             scannable and pruning bounds localStorage without dropping live
             stays or recent history.
 
+2026-11-16  The state sheet's hidden rows now have a guard behind them. Since
+            4bc111a a held room shows only the arrival actions, but the hold
+            is derived from the clock, so a pending booking can become
+            arriving between the render and a submit (midnight passes while
+            the OOS form is open). arrivingHold() names the booking that owns
+            a room, and commit() refuses any hand transition to OOS, To clean
+            or Cleaning while it does, announcing "Cancel <host>'s arrival on
+            <date> first to change this room." Vacant and occupied targets are
+            untouched: check-in owns the latter and returning a room to vacant
+            cannot break a hold.
+            Tests: 86 domain/store/contrast and 205 browser checks.
+            why: the 2026-11-04 scope decision guarded only set-occupied, and
+            hiding the state rows later left the invariant resting on the view
+            alone. This keeps a booking from losing the room it is standing at
+            the desk for.
+
 ================================================================
 4. TODO TASKS
 ================================================================
 
-- Guard OOS/dirty/cleaning against live holds too if hand-moving a held room proves annoying (decided 2026-11-04: occupied only)
 - Arrival sheet hides room-state overrides: cancel the booking first to mark a held room OOS/dirty (revisit if the desk needs it mid-arrival)
 - Make the 10:00 boundary, the night-of cutoff and the cleaning durations configurable once a settings screen exists
 

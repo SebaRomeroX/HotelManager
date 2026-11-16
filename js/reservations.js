@@ -258,6 +258,13 @@ export function arrivingRoomIds(state, id, now = new Date()) {
     .map(([roomId]) => roomId);
 }
 
+// The arriving booking that holds this room, or null. A hand state change must
+// not break a live hold: the booking is standing at the desk expecting this
+// exact room, and moving it to OOS or cleaning would leave the arrival short.
+export function arrivingHold(state, roomId, now = new Date()) {
+  return arrivingAssignment(state, now).get(roomId) ?? null;
+}
+
 // One state transition: every assigned room takes the stay timer exactly as a
 // manual set-occupied would — so the 10:00 boundary, the countdown label and
 // the night-of rule all apply from now — and the booking moves into the

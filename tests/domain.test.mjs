@@ -24,6 +24,7 @@ import {
 import {
   addReservation,
   arrivingAssignment,
+  arrivingHold,
   arrivingRoomIds,
   availabilityOn,
   bookableRoomTypes,
@@ -548,6 +549,45 @@ test("arrivingAssignment holds every requested room for the first booking", () =
     "small-2",
     "small-3",
   ]);
+});
+
+test("arrivingHold names the booking that owns a held room", () => {
+  const state = makeState({
+    reservations: [
+      booking({
+        id: "first",
+        hostName: "Ana",
+        counts: { small: 2 },
+        arrivalDate: iso(0),
+        days: 1,
+      }),
+      booking({
+        id: "second",
+        hostName: "Ben",
+        counts: { small: 2 },
+        arrivalDate: iso(0),
+        days: 1,
+      }),
+    ],
+  });
+
+  assert.equal(arrivingHold(state, "small-1", NOW).id, "first");
+  assert.equal(arrivingHold(state, "small-3", NOW).id, "second");
+  assert.equal(arrivingHold(state, "large-1", NOW), null);
+
+  // Past the night-of window the booking no longer holds the room, even
+  // though its arrival date has not "passed" in the calendar sense yet.
+  assert.equal(arrivingHold(state, "small-1", at(11, 13, 5)), null);
+
+  // A room that is not vacant cannot be held; the assignment shifts.
+  const blocked = makeState({
+    rooms: defaultRooms().map((candidate) =>
+      candidate.id === "small-1" ? { ...candidate, state: "oos" } : candidate,
+    ),
+    reservations: state.reservations,
+  });
+  assert.equal(arrivingHold(blocked, "small-1", NOW), null);
+  assert.equal(arrivingHold(blocked, "small-2", NOW).id, "first");
 });
 
 test("check-in is atomic across the whole reservation", () => {

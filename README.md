@@ -35,11 +35,13 @@ port are different stores, so pick one URL and keep using it.
   reservation sheet prefilled; tapping a non-fitting date opens its room
   breakdown.
 - **Arrivals and history** — tiles mark rooms held for an arriving booking.
-  Check-in takes every room in the reservation at once. Cancellations,
-  no-shows and check-ins are kept in the register, where a checked-in entry
-  can be checked out (its rooms go to To clean and the entry records the time)
-  or have its duration changed. A duration change moves the entry's record and
-  every room timer the stay still holds together. Status chips filter a long
+  Check-in takes every room in the reservation at once, and a held room is not
+  editable from its state sheet: cancel the arrival first, so a desk cannot
+  strand a booking by marking its room out of order. Cancellations, no-shows
+  and check-ins are kept in the register, where a checked-in entry can be
+  checked out (its rooms go to To clean and the entry records the time) or have
+  its duration changed. A duration change moves the entry's record and every
+  room timer the stay still holds together. Status chips filter a long
   register, and Clear old removes finished entries 30 days after they closed;
   open stays are never pruned.
 - **Saved data** — the Data sheet exports every room, booking and history

@@ -12,6 +12,7 @@ import {
 } from "../rooms.js";
 import {
   arrivingAssignment,
+  arrivingHold,
   arrivingRoomIds,
   checkInReservation,
   checkedInStayDaysError,
@@ -361,6 +362,25 @@ function focusCard(roomId) {
 }
 
 function commit(roomId, nextState, options) {
+  // The state rows are hidden while a room is held, but the hold is derived
+  // and time-based: it can appear between the render and this submit (midnight
+  // passes, a pending booking becomes arriving). A booking standing at the
+  // desk must not lose its room to a hand state change; only check-in may take
+  // it. Cancel the arrival first if the room really is unusable.
+  if (nextState !== "occupied" && nextState !== "vacant") {
+    const hold = arrivingHold(getState(), roomId);
+    if (hold) {
+      announce(
+        `Cancel ${hold.hostName}'s arrival on ${formatDate(hold.arrivalDate)} ` +
+          "first to change this room.",
+      );
+      // The room is held now, so the sheet should show the arrival actions
+      // rather than a form whose submit can never succeed.
+      render();
+      return;
+    }
+  }
+
   update((state) => setRoomState(state, roomId, nextState, options));
   dialog.close();
   focusCard(roomId);
