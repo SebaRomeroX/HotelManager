@@ -1,9 +1,15 @@
 import { getState, subscribe, update } from "../store.js";
 import { STAY_MAX_DAYS, STAY_MIN_DAYS } from "../rooms.js";
 import {
+  REGISTER_FILTERS,
+  REGISTER_PRUNE_DAYS,
   checkOutRegisterEntry,
   checkedInStayDaysError,
   clearRegister,
+  filterRegisterEntries,
+  pruneRegister,
+  prunableRegisterEntries,
+  registerCounts,
   registerStatusLabel,
   removeRegisterEntry,
   reservationMeta,
@@ -31,11 +37,16 @@ dialog.innerHTML = `
   <div class="dialog__body">
     <p class="hint" data-summary hidden></p>
 
+    <div class="register-filter" data-filters role="group" aria-label="Filter register" hidden></div>
+
     <ul class="register-list" data-list></ul>
 
     <p class="empty" data-empty hidden>Register is empty.</p>
 
     <div class="register-clear" data-clear-wrap hidden>
+      <button class="btn btn--danger btn--block" type="button" data-prune hidden>
+        Clear old
+      </button>
       <button class="btn btn--danger btn--block" type="button" data-clear>
         Clear register
       </button>
@@ -45,15 +56,25 @@ dialog.innerHTML = `
 
 const closeButton = dialog.querySelector("[data-close]");
 const summary = dialog.querySelector("[data-summary]");
+const filters = dialog.querySelector("[data-filters]");
 const list = dialog.querySelector("[data-list]");
 const empty = dialog.querySelector("[data-empty]");
 const clearWrap = dialog.querySelector("[data-clear-wrap]");
+const pruneButton = dialog.querySelector("[data-prune]");
 const clearButton = dialog.querySelector("[data-clear]");
 
-// Only one thing can be armed at a time. Both confirmations are transient UI,
+// Four chips at 360px wrap onto a second row, so they only appear once the
+// list stops fitting one comfortable scan. The active filter keeps them
+// visible after a prune shrinks the list, so it can always be cleared.
+const FILTER_THRESHOLD = 8;
+
+// Only one thing can be armed at a time. All confirmations are transient UI,
 // so they live here rather than in the store.
 let armedId = null;
 let armedClear = false;
+let armedPrune = false;
+// "all" or one of REGISTER_FILTERS' stored statuses.
+let activeFilter = "all";
 // The checked-in entry whose duration form is open, if any.
 let editingDaysId = null;
 // What the user has typed. Null means "not touched yet", so an unrelated
@@ -62,6 +83,55 @@ let daysDraft = null;
 // The control to focus after the list is rebuilt. Set just before a render
 // that removes the control the user pressed, so focus never drops to <body>.
 let pendingFocus = null;
+
+// Announced filter names read naturally in a sentence; the visible labels stay
+// title-cased for the chips and the status badges.
+const FILTER_ANNOUNCE = {
+  all: "all",
+  checked_in: "checked-in",
+  cancelled: "cancelled",
+  no_show: "no-show",
+};
+
+// The chips are built once and updated in place, so a repaint never steals
+// focus from the filter the user just pressed.
+const filterButtons = new Map();
+for (const { value, label } of REGISTER_FILTERS) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "register-filter__option";
+  button.dataset.filter = value;
+
+  const name = document.createElement("span");
+  name.textContent = label;
+
+  const count = document.createElement("span");
+  count.className = "register-filter__count";
+
+  button.append(name, count);
+  button.addEventListener("click", () => {
+    if (activeFilter === value) return;
+
+    activeFilter = value;
+    armedId = null;
+    armedClear = false;
+    armedPrune = false;
+    editingDaysId = null;
+    daysDraft = null;
+    render();
+
+    const all = sortRegister(getState().register ?? []);
+    const shown = filterRegisterEntries(all, value).length;
+    announce(
+      value === "all"
+        ? `Showing all ${all.length} ${all.length === 1 ? "entry" : "entries"}.`
+        : `Showing ${shown} ${FILTER_ANNOUNCE[value]} ${shown === 1 ? "entry" : "entries"}.`,
+    );
+  });
+
+  filterButtons.set(value, { button, count });
+  filters.append(button);
+}
 
 function pad(value) {
   return String(value).padStart(2, "0");
@@ -107,6 +177,11 @@ function applyFocus() {
     const input = inputs.find((candidate) => candidate.dataset.id === request.id);
     input?.focus();
     input?.select();
+  } else if (request.kind === "prune") {
+    // The button removes itself once nothing is old enough; fall back to the
+    // clear button, then Close.
+    if (!pruneButton.hidden) pruneButton.focus();
+    else (clearWrap.hidden ? closeButton : clearButton).focus();
   } else if (request.kind === "clear") {
     (clearButton.hidden ? closeButton : clearButton).focus();
   } else {
@@ -115,21 +190,30 @@ function applyFocus() {
 }
 
 function render() {
-  const entries = sortRegister(getState().register ?? []);
+  const state = getState();
+  const all = sortRegister(state.register ?? []);
+  const total = all.length;
+  const counts = registerCounts(all);
+  const entries = filterRegisterEntries(all, activeFilter);
+  const prunable = prunableRegisterEntries(state);
 
   // A record can disappear under the sheet (another tab, or a clear elsewhere);
   // never leave an arm or an open editor pointing at something that is gone.
-  if (armedId && !entries.some((entry) => entry.id === armedId)) {
+  if (armedId && !all.some((entry) => entry.id === armedId)) {
     armedId = null;
   }
   if (editingDaysId) {
-    const editing = entries.find((entry) => entry.id === editingDaysId);
+    const editing = all.find((entry) => entry.id === editingDaysId);
     if (!editing || editing.status !== "checked_in" || editing.checkedOutAt) {
       editingDaysId = null;
       daysDraft = null;
     }
   }
-  if (entries.length === 0) armedClear = false;
+  if (total === 0) {
+    armedClear = false;
+    armedPrune = false;
+  }
+  if (armedPrune && prunable.length === 0) armedPrune = false;
 
   // The list is rebuilt wholesale. Remember a focused row control so an
   // unrelated store render (a ticker step, another tab) does not strand the
@@ -155,11 +239,37 @@ function render() {
         }
       : editingFocus;
 
-  summary.textContent = `${entries.length} ${entries.length === 1 ? "entry" : "entries"}`;
-  summary.hidden = entries.length === 0;
+  summary.textContent =
+    activeFilter === "all"
+      ? `${total} ${total === 1 ? "entry" : "entries"}`
+      : `${entries.length} of ${total} entries`;
+  summary.hidden = total === 0;
+
+  const showFilters =
+    total > 0 && (total > FILTER_THRESHOLD || activeFilter !== "all");
+  filters.hidden = !showFilters;
+  for (const [value, { button, count }] of filterButtons) {
+    button.setAttribute("aria-pressed", String(value === activeFilter));
+    count.textContent = String(counts[value]);
+  }
+
   list.hidden = entries.length === 0;
   empty.hidden = entries.length > 0;
-  clearWrap.hidden = entries.length === 0;
+  empty.textContent =
+    total === 0 ? "Register is empty." : "No entries match this filter.";
+  clearWrap.hidden = total === 0;
+
+  pruneButton.hidden = prunable.length === 0;
+  pruneButton.textContent = armedPrune
+    ? `Confirm clear ${prunable.length} old`
+    : `Clear old (${prunable.length})`;
+  pruneButton.setAttribute(
+    "aria-label",
+    armedPrune
+      ? `Confirm clearing ${prunable.length} old ${prunable.length === 1 ? "entry" : "entries"}`
+      : `Clear ${prunable.length} finished ${prunable.length === 1 ? "entry" : "entries"} older than ${REGISTER_PRUNE_DAYS} days`,
+  );
+  pruneButton.classList.toggle("btn--armed", armedPrune);
 
   clearButton.textContent = armedClear ? "Confirm clear" : "Clear register";
   clearButton.classList.toggle("btn--armed", armedClear);
@@ -410,16 +520,18 @@ function armOrDelete(id) {
   if (armedId !== id) {
     armedId = id;
     armedClear = false;
+    armedPrune = false;
     pendingFocus = { kind: "delete", id };
     render();
     return;
   }
 
-  // Remember the row's place: after it is gone focus should land on the next
-  // entry, then the previous one, then Close.
-  const index = sortRegister(getState().register ?? []).findIndex(
-    (entry) => entry.id === id,
-  );
+  // Remember the row's place within the visible list: after it is gone focus
+  // should land on the next entry, then the previous one, then Close.
+  const index = filterRegisterEntries(
+    sortRegister(getState().register ?? []),
+    activeFilter,
+  ).findIndex((entry) => entry.id === id);
   armedId = null;
   pendingFocus = { kind: "delete-index", index };
   update((state) => removeRegisterEntry(state, id));
@@ -429,6 +541,7 @@ clearButton.addEventListener("click", () => {
   if (!armedClear) {
     armedClear = true;
     armedId = null;
+    armedPrune = false;
     pendingFocus = { kind: "clear" };
     render();
     return;
@@ -437,6 +550,34 @@ clearButton.addEventListener("click", () => {
   armedClear = false;
   pendingFocus = { kind: "close" };
   update((state) => clearRegister(state));
+});
+
+// "Clear old" is a second destructive bulk action with the same two-step
+// guard. It only ever drops finished entries past the prune window; the
+// candidates are recomputed at confirm time, so a stale count cannot delete
+// something that changed while the button was armed.
+pruneButton.addEventListener("click", () => {
+  if (!armedPrune) {
+    armedPrune = true;
+    armedClear = false;
+    armedId = null;
+    pendingFocus = { kind: "prune" };
+    render();
+    return;
+  }
+
+  const removed = prunableRegisterEntries(getState()).length;
+  armedPrune = false;
+  pendingFocus = { kind: "prune" };
+  if (removed === 0) {
+    render();
+    return;
+  }
+
+  update((state) => pruneRegister(state));
+  announce(
+    `Removed ${removed} old ${removed === 1 ? "entry" : "entries"}.`,
+  );
 });
 
 closeButton.addEventListener("click", () => dialog.close());
@@ -449,6 +590,8 @@ dialog.addEventListener("click", (event) => {
 dialog.addEventListener("close", () => {
   armedId = null;
   armedClear = false;
+  armedPrune = false;
+  activeFilter = "all";
   editingDaysId = null;
   daysDraft = null;
   pendingFocus = null;
@@ -462,6 +605,8 @@ export function openRegisterDialog() {
 
   armedId = null;
   armedClear = false;
+  armedPrune = false;
+  activeFilter = "all";
   editingDaysId = null;
   daysDraft = null;
   pendingFocus = null;

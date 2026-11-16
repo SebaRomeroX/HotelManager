@@ -831,6 +831,48 @@ p {
 
 /* ===================== register ===================== */
 
+/* Wraps rather than scrolls: four chips do not fit one 360px row once the
+   counts make them wider. */
+.register-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.register-filter[hidden] {
+  display: none;
+}
+
+.register-filter__option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.register-filter__option[aria-pressed="true"] {
+  border-color: var(--text-muted);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
+.register-filter__count {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.register-filter__option[aria-pressed="true"] .register-filter__count {
+  color: var(--text);
+}
+
 .register-list {
   display: grid;
   gap: var(--space-2);
@@ -927,6 +969,7 @@ p {
 
 .register-clear {
   display: grid;
+  gap: var(--space-2);
 }
 
 

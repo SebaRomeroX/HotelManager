@@ -32,6 +32,7 @@ import {
   checkedInStayDaysError,
   checkoutDate,
   clearRegister,
+  filterRegisterEntries,
   formatDate,
   groupReservations,
   isArrivingNow,
@@ -43,9 +44,13 @@ import {
   occupancyConflict,
   occupancyConflictForRooms,
   parseDate,
+  pruneRegister,
+  prunableRegisterEntries,
   reconcileReservations,
+  registerCounts,
   registerEntry,
   registerStatusLabel,
+  REGISTER_PRUNE_DAYS,
   relativeDayLabel,
   removeRegisterEntry,
   removeReservation,
@@ -83,6 +88,10 @@ function iso(offsetDays, base = NOW) {
 
 function at(month, day, hour = 12, minute = 0) {
   return new Date(2026, month - 1, day, hour, minute, 0, 0);
+}
+
+function daysAgo(days, base = NOW) {
+  return new Date(base.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
 }
 
 function room(name, type, state = "vacant", extra = {}) {
@@ -834,6 +843,105 @@ test("a checked-in duration change refuses ended, checked-out and invalid stays"
     "That stay has already ended.",
   );
   assert.equal(updateCheckedInStayDays(relet, "res-1", 4, NOW), relet);
+});
+
+test("register counts and filters split history by status", () => {
+  const register = [
+    registerEntry(booking({ id: "a" }), "cancelled", { registeredAt: daysAgo(1) }),
+    registerEntry(booking({ id: "b" }), "no_show", { registeredAt: daysAgo(2) }),
+    registerEntry(booking({ id: "c" }), "checked_in", { registeredAt: daysAgo(3) }),
+    {
+      ...registerEntry(booking({ id: "d" }), "cancelled", { registeredAt: daysAgo(4) }),
+      status: "unknown",
+    },
+  ];
+
+  // "all" counts every row; the per-status counts only known statuses.
+  assert.deepEqual(registerCounts(register), {
+    all: 4,
+    checked_in: 1,
+    cancelled: 1,
+    no_show: 1,
+  });
+  assert.equal(filterRegisterEntries(register, "all"), register);
+  assert.deepEqual(
+    filterRegisterEntries(register, "cancelled").map(({ id }) => id),
+    ["a"],
+  );
+  assert.deepEqual(
+    filterRegisterEntries(register, "no_show").map(({ id }) => id),
+    ["b"],
+  );
+  assert.deepEqual(
+    filterRegisterEntries(register, "checked_in").map(({ id }) => id),
+    ["c"],
+  );
+});
+
+test("pruning drops old finished entries and keeps live or recent history", () => {
+  const liveStart = daysAgo(REGISTER_PRUNE_DAYS + 10);
+  const oldClosed = registerEntry(booking({ id: "old-closed" }), "checked_in", {
+    registeredAt: daysAgo(REGISTER_PRUNE_DAYS + 5),
+    assignedRooms: [{ id: "small-2", name: "Small 2", type: "small" }],
+  });
+
+  const state = makeState({
+    rooms: [
+      room("Small 1", "small", "occupied", {
+        stayDays: 60,
+        stayStartedAt: liveStart,
+      }),
+    ],
+    register: [
+      registerEntry(booking({ id: "old-cancelled" }), "cancelled", {
+        registeredAt: daysAgo(REGISTER_PRUNE_DAYS + 10),
+      }),
+      registerEntry(booking({ id: "old-no-show" }), "no_show", {
+        registeredAt: daysAgo(REGISTER_PRUNE_DAYS + 1),
+      }),
+      // Checked out long ago is finished, so it retires.
+      { ...oldClosed, checkedOutAt: daysAgo(REGISTER_PRUNE_DAYS + 1) },
+      // A long stay registered long ago but closed today is still new history.
+      {
+        ...oldClosed,
+        id: "long-stay",
+        registeredAt: daysAgo(REGISTER_PRUNE_DAYS + 30),
+        checkedOutAt: daysAgo(2),
+      },
+      // Still open, however old, is the only handle on a stay.
+      registerEntry(booking({ id: "old-open" }), "checked_in", {
+        registeredAt: daysAgo(REGISTER_PRUNE_DAYS + 20),
+        assignedRooms: [{ id: "small-1", name: "Small 1", type: "small" }],
+      }),
+      // A closed entry that somehow still owns a room is kept anyway.
+      registerEntry(booking({ id: "old-live" }), "checked_in", {
+        registeredAt: liveStart,
+        assignedRooms: [{ id: "small-1", name: "Small 1", type: "small" }],
+        checkedOutAt: daysAgo(2),
+      }),
+      // Exactly at the window is not yet old enough.
+      registerEntry(booking({ id: "boundary" }), "cancelled", {
+        registeredAt: daysAgo(REGISTER_PRUNE_DAYS),
+      }),
+      registerEntry(booking({ id: "recent" }), "cancelled", {
+        registeredAt: daysAgo(3),
+      }),
+    ],
+  });
+
+  assert.deepEqual(
+    prunableRegisterEntries(state, NOW).map(({ id }) => id),
+    ["old-cancelled", "old-no-show", "old-closed"],
+  );
+
+  const pruned = pruneRegister(state, NOW);
+  assert.deepEqual(
+    pruned.register.map(({ id }) => id),
+    ["long-stay", "old-open", "old-live", "boundary", "recent"],
+  );
+  assert.equal(state.register.length, 8, "the source state is untouched");
+  assert.equal(pruneRegister(pruned, NOW), pruned);
+  assert.equal(pruneRegister(makeState(), NOW).register.length, 0);
 });
 
 test("the single-room occupancy guard delegates to the group guard", () => {

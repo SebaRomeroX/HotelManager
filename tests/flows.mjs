@@ -102,6 +102,10 @@ function iso(offset) {
   )}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function daysAgo(days) {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 const baseRooms = [
   { id: "s1", name: "Small 1", type: "small", state: "vacant" },
   { id: "s2", name: "Small 2", type: "small", state: "vacant" },
@@ -1169,6 +1173,10 @@ try {
   });
   await page.click("[data-register]");
   await page.waitForSelector("dialog[open] [data-clear]");
+  check(
+    "a short register hides the filter row",
+    await page.locator("dialog[open] [data-filters]").isHidden(),
+  );
   await page.click("dialog[open] [data-clear]");
   check(
     "clearing the register arms before deleting history",
@@ -1180,6 +1188,162 @@ try {
   check(
     "confirming clears the register",
     (await stored()).register.length === 0,
+  );
+  await closeDialog();
+
+  // ---------- N2. register filters and old-entry pruning ----------
+  const history = (id, hostName, status, { ago = 2, ...extra } = {}) => ({
+    id,
+    hostName,
+    roomCounts: { small: 1, large: 0, suite: 0 },
+    arrivalDate: iso(-ago - 1),
+    days: 1,
+    status,
+    registeredAt: daysAgo(ago),
+    assignedRooms: [],
+    ...extra,
+  });
+  const liveStart = daysAgo(40);
+  await seed({
+    version: 4,
+    rooms: [
+      {
+        id: "r1",
+        name: "Room 1",
+        type: "small",
+        state: "occupied",
+        stayDays: 60,
+        stayStartedAt: liveStart,
+      },
+    ],
+    reservations: [],
+    register: [
+      history("old-cancelled", "Old Cancel", "cancelled", { ago: 40 }),
+      history("old-no-show", "Old No-show", "no_show", { ago: 35 }),
+      history("old-checked-out", "Old Departure", "checked_in", {
+        ago: 40,
+        checkedOutAt: daysAgo(31),
+      }),
+      history("old-open", "Old Open Stay", "checked_in", { ago: 40 }),
+      history("live", "Live Guest", "checked_in", {
+        ago: 40,
+        registeredAt: liveStart,
+        assignedRooms: [{ id: "r1", name: "Room 1", type: "small" }],
+      }),
+      history("recent-cancelled", "Recent Cancel", "cancelled", { ago: 2 }),
+      history("recent-no-show", "Recent No-show", "no_show", { ago: 3 }),
+      history("recent-checked-out", "Recent Departure", "checked_in", {
+        ago: 1,
+        // Registered long ago, closed only hours ago: still new history.
+        registeredAt: daysAgo(50),
+        checkedOutAt: daysAgo(0.5),
+      }),
+      history("recent-cancelled-2", "Another Cancel", "cancelled", { ago: 4 }),
+    ],
+  });
+
+  await page.click("[data-register]");
+  await page.waitForSelector("dialog[open] [data-filters]");
+  check(
+    "a long register shows the filter row",
+    await page.locator("dialog[open] [data-filters]").isVisible(),
+  );
+
+  const filterCounts = {};
+  for (const value of ["all", "checked_in", "cancelled", "no_show"]) {
+    filterCounts[value] = (
+      await page
+        .locator(`dialog[open] [data-filter="${value}"] .register-filter__count`)
+        .textContent()
+    ).trim();
+  }
+  check(
+    "each filter chip counts its status",
+    filterCounts.all === "9" &&
+      filterCounts.checked_in === "4" &&
+      filterCounts.cancelled === "3" &&
+      filterCounts.no_show === "2",
+    JSON.stringify(filterCounts),
+  );
+  check(
+    "all entries are shown by default",
+    (await page
+      .locator('dialog[open] [data-filter="all"]')
+      .getAttribute("aria-pressed")) === "true" &&
+      (await page.locator("dialog[open] .register-entry").count()) === 9,
+  );
+
+  const filterOverflow = await page.evaluate(() => {
+    const body = document.querySelector("dialog[open] .dialog__body");
+    return body.scrollWidth - body.clientWidth;
+  });
+  check(
+    "the filter row wraps without horizontal scroll",
+    filterOverflow <= 1,
+    `${filterOverflow}px`,
+  );
+
+  await page.click('dialog[open] [data-filter="cancelled"]');
+  check(
+    "filtering shows only the chosen status",
+    (await page.locator("dialog[open] .register-entry").count()) === 3,
+  );
+  check(
+    "the summary counts visible and total entries",
+    (await page.locator("dialog[open] [data-summary]").textContent()).trim() ===
+      "3 of 9 entries",
+  );
+
+  await page.click('dialog[open] [data-filter="checked_in"]');
+  check(
+    "the checked-in filter shows every in-house record",
+    (await page.locator("dialog[open] .register-entry").count()) === 4 &&
+      (await page.locator("dialog[open] [data-checkout]").count()) === 2 &&
+      (await page.locator("dialog[open] [data-days]").count()) === 1,
+  );
+
+  await page.click('dialog[open] [data-filter="all"]');
+  check(
+    "clearing the filter restores the full list",
+    (await page.locator("dialog[open] .register-entry").count()) === 9,
+  );
+
+  const prune = page.locator("dialog[open] [data-prune]");
+  check(
+    "clear old counts only finished entries past the window",
+    (await prune.textContent()).trim() === "Clear old (3)",
+    (await prune.textContent()).trim(),
+  );
+  await prune.click();
+  check(
+    "clearing old entries arms before deleting",
+    (await prune.textContent()).trim() === "Confirm clear 3 old" &&
+      (await stored()).register.length === 9,
+  );
+  await prune.click();
+  await page.waitForTimeout(200);
+  state = await stored();
+  check(
+    "confirming removes only the old finished entries",
+    state.register.length === 6 &&
+      !state.register.some((entry) =>
+        ["old-cancelled", "old-no-show", "old-checked-out"].includes(entry.id),
+      ) &&
+      ["old-open", "live", "recent-cancelled"].every((id) =>
+        state.register.some((entry) => entry.id === id),
+      ),
+    JSON.stringify(state.register.map((entry) => entry.id)),
+  );
+  check(
+    "the old-entry clear is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "Removed 3 old entries",
+    ),
+  );
+  check(
+    "the filter and clear-old controls retire with a short register",
+    (await page.locator("dialog[open] [data-filters]").isHidden()) &&
+      (await prune.isHidden()),
   );
   await closeDialog();
 

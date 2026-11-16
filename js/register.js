@@ -7,8 +7,39 @@ export const REGISTER_STATUS_LABELS = {
   no_show: "No-show",
 };
 
+// The filter row and the status badges read the same labels, so they can never
+// drift apart. "all" is not a stored status; it means no filtering.
+export const REGISTER_FILTERS = [
+  { value: "all", label: "All" },
+  ...Object.entries(REGISTER_STATUS_LABELS).map(([value, label]) => ({
+    value,
+    label,
+  })),
+];
+
 export function registerStatusLabel(status) {
   return REGISTER_STATUS_LABELS[status] ?? status;
+}
+
+// The list is already sorted newest first; filtering only hides rows.
+export function filterRegisterEntries(register, status = "all") {
+  if (status === "all") return register;
+  return register.filter((entry) => entry.status === status);
+}
+
+// Per-status totals for the filter row. Unknown statuses count only toward
+// "All", which keeps the all-count equal to the list length.
+export function registerCounts(register) {
+  const counts = {
+    all: register.length,
+    checked_in: 0,
+    cancelled: 0,
+    no_show: 0,
+  };
+  for (const { status } of register) {
+    if (Object.hasOwn(REGISTER_STATUS_LABELS, status)) counts[status] += 1;
+  }
+  return counts;
 }
 
 export function registerEntry(

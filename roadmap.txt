@@ -946,11 +946,32 @@ Newest entries at the bottom.
             history record never matched it. Now the booking and the rooms
             have one duration.
 
+2026-11-15  The register gains status filters and age-based pruning. Four
+            chips (All, Checked in, Cancelled, No-show) with counts appear
+            once the register passes eight entries — four chips do not fit
+            one 360px row — and stay visible while a filter is active so it
+            can always be cleared. The summary reads "3 of 9 entries" while
+            filtered, and an empty result says "No entries match this filter."
+            instead of claiming the register is empty.
+            Clear old arms like Clear register and removes finished entries —
+            cancelled, no-show or checked-out — whose close time (checkedOutAt,
+            else registeredAt) is at least 30 days old. Checked-in entries
+            without a check-out are never pruned: the entry is the only handle
+            on a stay and the way an early departure is recorded later. A
+            closed entry that somehow still owns a room is kept as well. A
+            long stay registered weeks ago but checked out today counts as new
+            history because the clock starts at the close.
+            Filtering is view-only; pruning is the only new writer and both
+            actions are announced. Tests: 85 domain/store/contrast and 205
+            browser checks pass.
+            why: the register only ever grew. Filtering makes a long list
+            scannable and pruning bounds localStorage without dropping live
+            stays or recent history.
+
 ================================================================
 4. TODO TASKS
 ================================================================
 
-- Register history has no pruning or filtering; add one when the list grows past a comfortable scroll
 - Guard OOS/dirty/cleaning against live holds too if hand-moving a held room proves annoying (decided 2026-11-04: occupied only)
 - Arrival sheet hides room-state overrides: cancel the booking first to mark a held room OOS/dirty (revisit if the desk needs it mid-arrival)
 - Make the 10:00 boundary, the night-of cutoff and the cleaning durations configurable once a settings screen exists

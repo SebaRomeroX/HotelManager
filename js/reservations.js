@@ -419,6 +419,42 @@ export function updateCheckedInStayDays(state, id, days, now = new Date()) {
   };
 }
 
+// How old a finished register entry must be before "Clear old" may drop it.
+// A month keeps recent history at hand while still bounding a store that never
+// prunes on its own.
+export const REGISTER_PRUNE_DAYS = 30;
+
+// The entries a prune may remove. Checked-in stays stay in the register until
+// they are checked out, however old they are: the entry is the only handle on
+// a stay, and it is also how an early departure is recorded later. Finished
+// events (cancelled, no-show and checked-out stays) retire after the window.
+// The live-room guard is belt and braces: a closed entry should not own a room
+// any more, and if it somehow does, history keeps it.
+export function prunableRegisterEntries(state, now = new Date()) {
+  const cutoff = now.getTime() - REGISTER_PRUNE_DAYS * 24 * 60 * 60 * 1000;
+
+  return (state.register ?? []).filter((entry) => {
+    if (entry.status === "checked_in" && !entry.checkedOutAt) return false;
+    if (checkedInRoomIds(state, entry).length > 0) return false;
+
+    // The clock starts when the record closed: a guest who arrived forty days
+    // ago but left today has only just become history.
+    const stamp = new Date(entry.checkedOutAt ?? entry.registeredAt).getTime();
+    return Number.isFinite(stamp) && stamp < cutoff;
+  });
+}
+
+export function pruneRegister(state, now = new Date()) {
+  const drop = prunableRegisterEntries(state, now);
+  if (drop.length === 0) return state;
+
+  const ids = new Set(drop.map((entry) => entry.id));
+  return {
+    ...state,
+    register: (state.register ?? []).filter((entry) => !ids.has(entry.id)),
+  };
+}
+
 function isNoShow(reservation, now) {
   if (reservation.checkedInAt) return false;
 
@@ -507,8 +543,11 @@ export {
   roomCountsLabel,
 } from "./reservation-record.js";
 export {
+  REGISTER_FILTERS,
   REGISTER_STATUS_LABELS,
   clearRegister,
+  filterRegisterEntries,
+  registerCounts,
   registerEntry,
   registerStatusLabel,
   removeRegisterEntry,
