@@ -984,6 +984,24 @@ Newest entries at the bottom.
             alone. This keeps a booking from losing the room it is standing at
             the desk for.
 
+2026-11-16  Pre-MVP safety pass. Check-out now arms like the other destructive
+            actions: "Check out" becomes "Confirm check out" (danger styling)
+            and only the second tap stamps checkedOutAt and frees the rooms to
+            To clean. Register cleanup is now Clear history: it removes
+            cancelled, no-show and checked-out entries and keeps open
+            checked-in stays, because the entry is the only handle on the
+            guest while the rooms are occupied. The per-row Delete is hidden
+            on an open stay, and removeRegisterEntry() refuses one at the
+            domain level too. clearRegister() became clearRegisterHistory(),
+            with isOpenRegisterEntry() shared by checkout, pruning and the
+            dialog. The README now says one tab at a time: there is no
+            storage-event listener, so two tabs are last-write-wins.
+            Tests: 86 domain/store/contrast and 210 browser checks.
+            why: every other destructive action asked twice, while check-out
+            changed history in one tap with no undo; and clearing history
+            could delete the only record of an in-house guest while their
+            rooms stayed occupied.
+
 ================================================================
 4. TODO TASKS
 ================================================================

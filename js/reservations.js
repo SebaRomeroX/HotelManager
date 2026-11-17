@@ -19,7 +19,7 @@ import {
   reservationRoomCounts,
   reservationRoomTotal,
 } from "./reservation-record.js";
-import { registerEntry } from "./register.js";
+import { isOpenRegisterEntry, registerEntry } from "./register.js";
 import {
   occupancyConflictForRooms,
   reservationAvailabilityError,
@@ -348,7 +348,7 @@ function checkedInRoomIds(state, entry) {
 export function checkOutRegisterEntry(state, id, now = new Date()) {
   const register = state.register ?? [];
   const entry = register.find((candidate) => candidate.id === id);
-  if (!entry || entry.status !== "checked_in" || entry.checkedOutAt) {
+  if (!isOpenRegisterEntry(entry)) {
     return state;
   }
 
@@ -441,7 +441,7 @@ export function prunableRegisterEntries(state, now = new Date()) {
   const cutoff = now.getTime() - REGISTER_PRUNE_DAYS * 24 * 60 * 60 * 1000;
 
   return (state.register ?? []).filter((entry) => {
-    if (entry.status === "checked_in" && !entry.checkedOutAt) return false;
+    if (isOpenRegisterEntry(entry)) return false;
     if (checkedInRoomIds(state, entry).length > 0) return false;
 
     // The clock starts when the record closed: a guest who arrived forty days
@@ -552,8 +552,9 @@ export {
 export {
   REGISTER_FILTERS,
   REGISTER_STATUS_LABELS,
-  clearRegister,
+  clearRegisterHistory,
   filterRegisterEntries,
+  isOpenRegisterEntry,
   registerCounts,
   registerEntry,
   registerStatusLabel,

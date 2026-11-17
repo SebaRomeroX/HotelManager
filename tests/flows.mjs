@@ -507,6 +507,17 @@ try {
     (await checkout.count()) === 1,
   );
   await checkout.click();
+  check(
+    "check-out arms before releasing the rooms",
+    (await checkout.textContent()).trim() === "Confirm check out" &&
+      (await stored()).register[0].checkedOutAt === undefined,
+  );
+  check(
+    "the armed check-out is styled as destructive",
+    (await checkout.getAttribute("class")).includes("btn--armed"),
+    await checkout.getAttribute("class"),
+  );
+  await checkout.click();
   await page.waitForTimeout(200);
   state = await stored();
   check("check-out records the time", Boolean(state.register[0].checkedOutAt));
@@ -1154,9 +1165,19 @@ try {
   await closeDialog();
 
   // ---------- N. guarded register clear ----------
+  const liveStayStart = daysAgo(0.5);
   await seed({
     version: 4,
-    rooms: [{ id: "r1", name: "Room 1", type: "small", state: "vacant" }],
+    rooms: [
+      {
+        id: "r1",
+        name: "Room 1",
+        type: "small",
+        state: "occupied",
+        stayDays: 2,
+        stayStartedAt: liveStayStart,
+      },
+    ],
     reservations: [],
     register: [
       {
@@ -1169,6 +1190,16 @@ try {
         registeredAt: new Date().toISOString(),
         assignedRooms: [],
       },
+      {
+        id: "live-1",
+        hostName: "In-house Guest",
+        roomCounts: { small: 1, large: 0, suite: 0 },
+        arrivalDate: iso(-1),
+        days: 2,
+        status: "checked_in",
+        registeredAt: liveStayStart,
+        assignedRooms: [{ id: "r1", name: "Room 1", type: "small" }],
+      },
     ],
   });
   await page.click("[data-register]");
@@ -1177,17 +1208,38 @@ try {
     "a short register hides the filter row",
     await page.locator("dialog[open] [data-filters]").isHidden(),
   );
+  check(
+    "an open stay offers check out but no Delete",
+    (await page
+      .locator('dialog[open] .register-entry[data-id="live-1"] [data-checkout]')
+      .count()) === 1 &&
+      (await page
+        .locator('dialog[open] .register-entry[data-id="live-1"] [data-delete]')
+        .count()) === 0,
+  );
   await page.click("dialog[open] [data-clear]");
   check(
-    "clearing the register arms before deleting history",
+    "clearing history arms before deleting records",
     (await page.locator("dialog[open] [data-clear]").textContent()).trim() ===
-      "Confirm clear" && (await stored()).register.length === 1,
+      "Confirm clear" && (await stored()).register.length === 2,
   );
   await page.click("dialog[open] [data-clear]");
   await page.waitForTimeout(150);
+  state = await stored();
   check(
-    "confirming clears the register",
-    (await stored()).register.length === 0,
+    "confirming clears closed history and keeps the open stay",
+    state.register.length === 1 && state.register[0].id === "live-1",
+    JSON.stringify(state.register.map((entry) => entry.id)),
+  );
+  check(
+    "the kept in-house stay is announced",
+    (await page.locator("[data-announcer]").textContent()).includes(
+      "Kept 1 in-house stay",
+    ),
+  );
+  check(
+    "clearing history retires when only open stays remain",
+    await page.locator("dialog[open] [data-clear-wrap]").isHidden(),
   );
   await closeDialog();
 

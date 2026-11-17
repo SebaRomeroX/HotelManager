@@ -32,11 +32,12 @@ import {
   checkOutRegisterEntry,
   checkedInStayDaysError,
   checkoutDate,
-  clearRegister,
+  clearRegisterHistory,
   filterRegisterEntries,
   formatDate,
   groupReservations,
   isArrivingNow,
+  isOpenRegisterEntry,
   isPastReservation,
   maxStayDays,
   maxStayDaysForRequest,
@@ -1125,23 +1126,57 @@ test("registerEntry snapshots assigned room names and types", () => {
   assert.equal(entry.status, "checked_in");
 });
 
-test("register helpers sort newest first and remove only existing entries", () => {
+test("register helpers sort newest first and retire only closed entries", () => {
   const entries = [
     { id: "old", hostName: "A", registeredAt: at(11, 10, 12).toISOString() },
     { id: "new", hostName: "B", registeredAt: at(11, 12, 12).toISOString() },
     { id: "tie", hostName: "C", registeredAt: at(11, 12, 12).toISOString() },
+    {
+      id: "open",
+      hostName: "D",
+      status: "checked_in",
+      registeredAt: at(11, 13, 12).toISOString(),
+    },
+    {
+      id: "closed",
+      hostName: "E",
+      status: "checked_in",
+      registeredAt: at(11, 14, 12).toISOString(),
+      checkedOutAt: at(11, 15, 12).toISOString(),
+    },
   ];
 
-  assert.deepEqual(sortRegister(entries).map(({ id }) => id), ["new", "tie", "old"]);
+  assert.deepEqual(sortRegister(entries).map(({ id }) => id), [
+    "closed",
+    "open",
+    "new",
+    "tie",
+    "old",
+  ]);
+  assert.equal(isOpenRegisterEntry(entries[3]), true);
+  assert.equal(isOpenRegisterEntry(entries[4]), false);
+  assert.equal(isOpenRegisterEntry(entries[0]), false);
 
   const state = makeState({ register: entries });
   const removed = removeRegisterEntry(state, "old");
-  assert.deepEqual(removed.register.map(({ id }) => id), ["new", "tie"]);
+  assert.deepEqual(removed.register.map(({ id }) => id), [
+    "new",
+    "tie",
+    "open",
+    "closed",
+  ]);
   assert.equal(removeRegisterEntry(state, "missing"), state);
+  // An open stay is the only handle on the guest: deletion is refused rather
+  // than leaving the rooms occupied with no record.
+  assert.equal(removeRegisterEntry(state, "open"), state);
 
-  const cleared = clearRegister(state);
-  assert.deepEqual(cleared.register, []);
-  assert.equal(clearRegister(cleared), cleared);
+  const cleared = clearRegisterHistory(state);
+  assert.deepEqual(cleared.register.map(({ id }) => id), ["open"]);
+  assert.equal(clearRegisterHistory(cleared), cleared);
+  // Only open stays left: there is nothing to clear, so the state is returned
+  // untouched rather than rebuilt.
+  const onlyOpen = makeState({ register: [entries[3]] });
+  assert.equal(clearRegisterHistory(onlyOpen), onlyOpen);
 });
 
 test("groupReservations separates today, incoming and past", () => {

@@ -5,8 +5,9 @@ import {
   REGISTER_PRUNE_DAYS,
   checkOutRegisterEntry,
   checkedInStayDaysError,
-  clearRegister,
+  clearRegisterHistory,
   filterRegisterEntries,
+  isOpenRegisterEntry,
   pruneRegister,
   prunableRegisterEntries,
   registerCounts,
@@ -48,7 +49,7 @@ dialog.innerHTML = `
         Clear old
       </button>
       <button class="btn btn--danger btn--block" type="button" data-clear>
-        Clear register
+        Clear history
       </button>
     </div>
   </div>
@@ -73,6 +74,7 @@ const FILTER_THRESHOLD = 8;
 let armedId = null;
 let armedClear = false;
 let armedPrune = false;
+let armedCheckoutId = null;
 // "all" or one of REGISTER_FILTERS' stored statuses.
 let activeFilter = "all";
 // The checked-in entry whose duration form is open, if any.
@@ -116,6 +118,7 @@ for (const { value, label } of REGISTER_FILTERS) {
     armedId = null;
     armedClear = false;
     armedPrune = false;
+    armedCheckoutId = null;
     editingDaysId = null;
     daysDraft = null;
     render();
@@ -196,11 +199,21 @@ function render() {
   const counts = registerCounts(all);
   const entries = filterRegisterEntries(all, activeFilter);
   const prunable = prunableRegisterEntries(state);
+  // Live stays are never cleared or deleted: the register entry is the only
+  // handle on the guest while the rooms are still occupied.
+  const openCount = all.filter(isOpenRegisterEntry).length;
+  const closedCount = total - openCount;
 
   // A record can disappear under the sheet (another tab, or a clear elsewhere);
   // never leave an arm or an open editor pointing at something that is gone.
   if (armedId && !all.some((entry) => entry.id === armedId)) {
     armedId = null;
+  }
+  if (armedCheckoutId) {
+    const checkout = all.find((entry) => entry.id === armedCheckoutId);
+    if (!checkout || checkout.status !== "checked_in" || checkout.checkedOutAt) {
+      armedCheckoutId = null;
+    }
   }
   if (editingDaysId) {
     const editing = all.find((entry) => entry.id === editingDaysId);
@@ -209,7 +222,7 @@ function render() {
       daysDraft = null;
     }
   }
-  if (total === 0) {
+  if (closedCount === 0) {
     armedClear = false;
     armedPrune = false;
   }
@@ -257,7 +270,7 @@ function render() {
   empty.hidden = entries.length > 0;
   empty.textContent =
     total === 0 ? "Register is empty." : "No entries match this filter.";
-  clearWrap.hidden = total === 0;
+  clearWrap.hidden = closedCount === 0;
 
   pruneButton.hidden = prunable.length === 0;
   pruneButton.textContent = armedPrune
@@ -271,7 +284,7 @@ function render() {
   );
   pruneButton.classList.toggle("btn--armed", armedPrune);
 
-  clearButton.textContent = armedClear ? "Confirm clear" : "Clear register";
+  clearButton.textContent = armedClear ? "Confirm clear" : "Clear history";
   clearButton.classList.toggle("btn--armed", armedClear);
 
   if (retainedFocus) pendingFocus = retainedFocus;
@@ -381,18 +394,32 @@ function entryRow(entry) {
       actions.append(changeDays);
     }
 
+    // Checking out frees every room and stamps the close time, and it cannot
+    // be undone, so it arms like the other destructive actions: the first tap
+    // asks, the second commits.
+    const checkoutArmed = armedCheckoutId === entry.id;
     const checkOut = document.createElement("button");
     checkOut.type = "button";
     checkOut.className = "btn register-entry__checkout";
+    checkOut.classList.toggle("btn--danger", checkoutArmed);
+    checkOut.classList.toggle("btn--armed", checkoutArmed);
     checkOut.dataset.checkout = "";
     checkOut.dataset.id = entry.id;
-    checkOut.textContent = "Check out";
-    checkOut.setAttribute("aria-label", `Check out ${entry.hostName}`);
-    checkOut.addEventListener("click", () => checkOutEntry(entry.id));
+    checkOut.textContent = checkoutArmed ? "Confirm check out" : "Check out";
+    checkOut.setAttribute(
+      "aria-label",
+      checkoutArmed
+        ? `Confirm checking out ${entry.hostName}`
+        : `Check out ${entry.hostName}`,
+    );
+    checkOut.addEventListener("click", () => armOrCheckOut(entry.id));
     actions.append(checkOut);
   }
 
-  actions.append(remove);
+  // An open stay has no Delete: check out first, then retire the record. That
+  // keeps the only handle on the guest from disappearing while the rooms are
+  // still occupied.
+  if (!isOpenRegisterEntry(entry)) actions.append(remove);
   item.append(actions);
   return item;
 }
@@ -415,6 +442,7 @@ function hasActiveStay(entry) {
 function openDaysEditor(id) {
   editingDaysId = id;
   daysDraft = null;
+  armedCheckoutId = null;
   pendingFocus = { kind: "days-input", id };
   render();
 }
@@ -503,12 +531,29 @@ function daysForm(entry) {
   return form;
 }
 
+function armOrCheckOut(id) {
+  if (armedCheckoutId !== id) {
+    armedCheckoutId = id;
+    armedId = null;
+    armedClear = false;
+    armedPrune = false;
+    editingDaysId = null;
+    daysDraft = null;
+    pendingFocus = { kind: "checkout", id };
+    render();
+    return;
+  }
+
+  checkOutEntry(id);
+}
+
 function checkOutEntry(id) {
   const entry = (getState().register ?? []).find(
     (candidate) => candidate.id === id,
   );
   if (!entry) return;
 
+  armedCheckoutId = null;
   // The row keeps its Delete button, so focus has somewhere to land after the
   // Check out action removes itself.
   pendingFocus = { kind: "checkout", id };
@@ -521,17 +566,20 @@ function armOrDelete(id) {
     armedId = id;
     armedClear = false;
     armedPrune = false;
+    armedCheckoutId = null;
     pendingFocus = { kind: "delete", id };
     render();
     return;
   }
 
-  // Remember the row's place within the visible list: after it is gone focus
-  // should land on the next entry, then the previous one, then Close.
+  // Remember the row's place among the rows that still have a Delete button:
+  // open stays do not, and focus is index-based over the buttons.
   const index = filterRegisterEntries(
     sortRegister(getState().register ?? []),
     activeFilter,
-  ).findIndex((entry) => entry.id === id);
+  )
+    .filter((entry) => !isOpenRegisterEntry(entry))
+    .findIndex((entry) => entry.id === id);
   armedId = null;
   pendingFocus = { kind: "delete-index", index };
   update((state) => removeRegisterEntry(state, id));
@@ -542,14 +590,29 @@ clearButton.addEventListener("click", () => {
     armedClear = true;
     armedId = null;
     armedPrune = false;
+    armedCheckoutId = null;
     pendingFocus = { kind: "clear" };
     render();
     return;
   }
 
+  const register = getState().register ?? [];
+  const kept = register.filter(isOpenRegisterEntry).length;
+  const removed = register.length - kept;
   armedClear = false;
   pendingFocus = { kind: "close" };
-  update((state) => clearRegister(state));
+  if (removed === 0) {
+    render();
+    return;
+  }
+
+  update((state) => clearRegisterHistory(state));
+  announce(
+    kept === 0
+      ? `Cleared ${removed} history ${removed === 1 ? "entry" : "entries"}.`
+      : `Cleared ${removed} history ${removed === 1 ? "entry" : "entries"}. ` +
+          `Kept ${kept} in-house ${kept === 1 ? "stay" : "stays"}.`,
+  );
 });
 
 // "Clear old" is a second destructive bulk action with the same two-step
@@ -561,6 +624,7 @@ pruneButton.addEventListener("click", () => {
     armedPrune = true;
     armedClear = false;
     armedId = null;
+    armedCheckoutId = null;
     pendingFocus = { kind: "prune" };
     render();
     return;
@@ -591,6 +655,7 @@ dialog.addEventListener("close", () => {
   armedId = null;
   armedClear = false;
   armedPrune = false;
+  armedCheckoutId = null;
   activeFilter = "all";
   editingDaysId = null;
   daysDraft = null;
@@ -606,6 +671,7 @@ export function openRegisterDialog() {
   armedId = null;
   armedClear = false;
   armedPrune = false;
+  armedCheckoutId = null;
   activeFilter = "all";
   editingDaysId = null;
   daysDraft = null;

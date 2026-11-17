@@ -74,17 +74,34 @@ export function sortRegister(register) {
   });
 }
 
+// A checked-in entry without a check-out is a live stay: the rooms may still
+// be occupied and the entry is the only handle for check-out, duration edits
+// and the early-departure record. History actions keep it. Once checked out,
+// the stay is closed history like a cancellation or a no-show.
+export function isOpenRegisterEntry(entry) {
+  return entry?.status === "checked_in" && !entry.checkedOutAt;
+}
+
 export function removeRegisterEntry(state, id) {
   const register = state.register ?? [];
-  if (!register.some((entry) => entry.id === id)) return state;
+  const entry = register.find((candidate) => candidate.id === id);
+  // Deleting an open stay would leave the rooms occupied with no record of
+  // who is in house and no way to check them out. Check out first.
+  if (!entry || isOpenRegisterEntry(entry)) return state;
 
   return {
     ...state,
-    register: register.filter((entry) => entry.id !== id),
+    register: register.filter((candidate) => candidate.id !== id),
   };
 }
 
-export function clearRegister(state) {
-  if ((state.register ?? []).length === 0) return state;
-  return { ...state, register: [] };
+// "Clear history" removes closed entries and keeps live stays. Refusing the
+// whole action while a guest is in house would block cleanup for the length
+// of every stay, so the open entries survive instead.
+export function clearRegisterHistory(state) {
+  const register = state.register ?? [];
+  const kept = register.filter(isOpenRegisterEntry);
+  if (kept.length === register.length) return state;
+
+  return { ...state, register: kept };
 }

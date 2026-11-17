@@ -20,7 +20,8 @@ Open <http://localhost:8000>. There is nothing to install and nothing to
 compile.
 
 Data is scoped to the origin. `localhost:8000`, `127.0.0.1:8000` and another
-port are different stores, so pick one URL and keep using it.
+port are different stores, so pick one URL and keep using it. Use one tab at a
+time as well: there is no cross-tab sync, so two open tabs are last-write-wins.
 
 ## What it does
 
@@ -39,11 +40,12 @@ port are different stores, so pick one URL and keep using it.
   editable from its state sheet: cancel the arrival first, so a desk cannot
   strand a booking by marking its room out of order. Cancellations, no-shows
   and check-ins are kept in the register, where a checked-in entry can be
-  checked out (its rooms go to To clean and the entry records the time) or have
-  its duration changed. A duration change moves the entry's record and every
-  room timer the stay still holds together. Status chips filter a long
-  register, and Clear old removes finished entries 30 days after they closed;
-  open stays are never pruned.
+  checked out (two taps; its rooms go to To clean and the entry records the
+  time) or have its duration changed. A duration change moves the entry's
+  record and every room timer the stay still holds together. Status chips
+  filter a long register. Clear history removes closed entries and keeps open
+  checked-in stays; Clear old removes finished entries 30 days after they
+  closed. An open stay has no Delete button until it is checked out.
 - **Saved data** — the Data sheet exports every room, booking and history
   entry as one JSON file. Restore validates the file and shows what it holds
   before replacing the current desk; it never merges or overwrites silently.
@@ -203,13 +205,18 @@ the type can still be deleted. Checked-in stays are ignored because their
 room is already out of supply, and register snapshots keep the deleted room's
 name as history.
 
-Clearing the register also takes two taps (`Clear register`, then
-`Confirm clear`) and removes every entry, open stays included. `Clear old`
-takes the same guard and removes only finished entries (cancelled, no-show or
-checked-out) whose close time is at least 30 days old; a stay registered long
-ago but checked out today is still new history. Open checked-in stays are never
-pruned, because the entry is the only handle on the room and the way an early
-departure is recorded. Neither action touches rooms or pending bookings.
+Check-out asks for a second tap too (`Check out`, then `Confirm check out`):
+it frees every room in the stay and stamps the close time, and there is no
+undo.
+
+Clearing history takes two taps (`Clear history`, then `Confirm clear`) and
+removes closed entries only: cancellations, no-shows and checked-out stays. An
+open checked-in stay survives, because the entry is the only handle on the
+guest and the way an early departure is recorded; its Delete button appears
+once the stay is checked out. `Clear old` takes the same guard and removes only
+finished entries whose close time is at least 30 days old; a stay registered
+long ago but checked out today is still new history. Neither action touches
+rooms or pending bookings.
 
 ## Where things live
 
@@ -226,7 +233,8 @@ js/download.js           dated file download helper
 js/rooms.js              room types, states and timers
 js/dates.js              calendar parsing, arrival windows and labels
 js/capacity.js           availability, fitting and conflict guards
-js/register.js           history snapshots, ordering, filters and counts
+js/register.js           history snapshots, ordering, filters, counts and the
+                         open-stay guard
 js/reservation-record.js stored booking shape, counts and meta line
 js/reservations.js       booking lifecycle; re-exports the domain modules
 js/ticker.js             scheduled reconciliation and repaints
@@ -244,12 +252,13 @@ roadmap.txt              rules, spec, decisions, dev log and open work
 
 ## Known limitations
 
-- One browser profile and one origin. There is no sync and no automatic
-  backup. Export/restore moves data by hand through a JSON file; clearing
-  site data without an export still deletes the property.
-- Register pruning only retires finished entries after 30 days; an open
-  checked-in stay stays until it is checked out, and `Clear register` removes
-  everything, open stays included.
+- One browser profile, one origin and one tab at a time. There is no sync and
+  no cross-tab listener, so two open tabs are last-write-wins and can
+  overwrite each other. Export/restore moves data by hand through a JSON file;
+  clearing site data without an export still deletes the property.
+- Register pruning only retires finished entries after 30 days. `Clear history`
+  removes closed history but keeps open checked-in stays, which remain until
+  they are checked out.
 - A room held by an arriving booking cannot be marked out of order or cleaned
   from its sheet: cancel the arrival first, or the hold would be left short.
 - Accessibility and the responsive layout are checked in Chromium only, at
